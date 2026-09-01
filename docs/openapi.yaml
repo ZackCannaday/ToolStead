@@ -1,0 +1,325 @@
+openapi: 3.1.0
+info:
+  title: Toolstead Platform API
+  version: 0.2.0
+  description: Workspace, module entitlement, and CRM foundation for Toolstead.
+servers:
+  - url: /api/v1
+security:
+  - accessCookie: []
+paths:
+  /auth/login:
+    post:
+      security: []
+      operationId: login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Authenticated account and workspace.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Account"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+  /auth/refresh:
+    post:
+      security:
+        - refreshCookie: []
+      operationId: refreshSession
+      responses:
+        "200":
+          description: Session rotated.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /auth/logout:
+    post:
+      operationId: logout
+      responses:
+        "200":
+          description: Session revoked.
+  /auth/me:
+    get:
+      operationId: getCurrentAccount
+      responses:
+        "200":
+          description: Current account.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Account"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /modules:
+    get:
+      operationId: listWorkspaceModules
+      responses:
+        "200":
+          description: Available and enabled workspace modules.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /work-queue:
+    get:
+      operationId: listWorkQueue
+      parameters:
+        - name: scope
+          in: query
+          schema:
+            type: string
+            enum: [attention, today, all]
+            default: attention
+        - name: q
+          in: query
+          schema:
+            type: string
+            maxLength: 120
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+      responses:
+        "200":
+          description: Workspace work items.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [scope, count, items]
+                properties:
+                  scope:
+                    type: string
+                  count:
+                    type: integer
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/WorkItem"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /contacts/{contactId}/timeline:
+    get:
+      operationId: getContactTimeline
+      parameters:
+        - $ref: "#/components/parameters/ContactId"
+      responses:
+        "200":
+          description: Contact timeline.
+        "400":
+          $ref: "#/components/responses/BadRequest"
+  /contacts/{contactId}/messages:
+    post:
+      operationId: queueContactMessage
+      parameters:
+        - $ref: "#/components/parameters/ContactId"
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            minLength: 8
+            maxLength: 128
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [channel, body]
+              properties:
+                channel:
+                  type: string
+                  enum: [email, sms]
+                subject:
+                  type: string
+                  maxLength: 200
+                body:
+                  type: string
+                  minLength: 1
+                  maxLength: 10000
+      responses:
+        "202":
+          description: Message accepted into the outbox.
+        "409":
+          description: Consent or destination conflict.
+  /contacts/{contactId}/consents:
+    post:
+      operationId: recordContactConsent
+      parameters:
+        - $ref: "#/components/parameters/ContactId"
+      responses:
+        "201":
+          description: Consent evidence recorded.
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /contacts/{contactId}/appointments:
+    post:
+      operationId: createContactAppointment
+      parameters:
+        - $ref: "#/components/parameters/ContactId"
+      responses:
+        "201":
+          description: Appointment created.
+components:
+  securitySchemes:
+    accessCookie:
+      type: apiKey
+      in: cookie
+      name: toolstead_access
+    refreshCookie:
+      type: apiKey
+      in: cookie
+      name: toolstead_refresh
+  parameters:
+    ContactId:
+      name: contactId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+  responses:
+    BadRequest:
+      description: Request validation failed.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Unauthorized:
+      description: Authentication is required or invalid.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Forbidden:
+      description: Role or module entitlement denied.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    RateLimited:
+      description: Too many requests.
+  schemas:
+    LoginRequest:
+      type: object
+      additionalProperties: false
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+          maxLength: 320
+        password:
+          type: string
+          minLength: 12
+          maxLength: 200
+        workspaceSlug:
+          type: string
+          minLength: 2
+          maxLength: 120
+    Account:
+      type: object
+      required: [user, workspace]
+      properties:
+        user:
+          type: object
+          required: [id, email, displayName, role]
+          properties:
+            id:
+              type: string
+              format: uuid
+            email:
+              type: string
+              format: email
+            displayName:
+              type: string
+            role:
+              type: string
+        workspace:
+          type: object
+          required: [id, name, slug]
+          properties:
+            id:
+              type: string
+              format: uuid
+            name:
+              type: string
+            slug:
+              type: string
+    WorkItem:
+      type: object
+      required:
+        [id, contactId, name, initials, type, source, age, urgency, nextStep, action, actionType, timeline]
+      properties:
+        id:
+          type: string
+          format: uuid
+        contactId:
+          type: string
+          format: uuid
+        name:
+          type: string
+        initials:
+          type: string
+        type:
+          type: string
+        source:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        age:
+          type: string
+        urgency:
+          type: string
+        urgencyTone:
+          type: string
+        nextStep:
+          type: string
+        note:
+          type: [string, "null"]
+        action:
+          type: string
+        actionType:
+          type: string
+        phone:
+          type: [string, "null"]
+        email:
+          type: [string, "null"]
+        consent:
+          type: string
+        summary:
+          type: string
+        nextAction:
+          type: string
+        timeline:
+          type: array
+          items:
+            type: object
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message, requestId]
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            requestId:
+              type: string
