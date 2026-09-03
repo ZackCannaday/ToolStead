@@ -7,7 +7,7 @@ A modular Node/PostgreSQL platform with an entitlement-aware tool shell, searcha
 - Fastify API with versioned REST routes and an OpenAPI contract
 - PostgreSQL migrations for workspaces, users, future employee memberships, roles, module entitlements, bundle tiers, CRM contacts, consent, timeline, work queue, appointments, outbox, and audit history
 - Supabase Auth integration layer with secure owner-workspace provisioning migration
-- Row-level security (RLS) policies and authenticated database functions, pending live project verification
+- Row-level security (RLS) policies and authenticated database functions, verified against the connected Supabase project
 - API-connected CRM actions for creating, editing, searching, noting, and archiving contacts
 - Subscription-bundle and add-on records with billing enforcement intentionally disabled
 - Empty local test mode when live persistence is unavailable—no fabricated customers
