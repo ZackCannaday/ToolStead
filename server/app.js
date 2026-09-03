@@ -9,7 +9,11 @@ import jwt from "@fastify/jwt";
 import rateLimit from "@fastify/rate-limit";
 import { loadConfig } from "./config.js";
 import { createPool } from "./db/pool.js";
-import { AppError, errorEnvelope } from "./lib/errors.js";
+import {
+  AppError,
+  errorEnvelope,
+  normalizeDatabaseError,
+} from "./lib/errors.js";
 import { securityPlugin } from "./plugins/security.js";
 import { authRoutes } from "./routes/auth.js";
 import { healthRoutes } from "./routes/health.js";
@@ -57,7 +61,12 @@ export async function buildApp(options = {}) {
     origin: config.corsOrigin,
     credentials: true,
     methods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization", "Idempotency-Key", "X-Correlation-ID"],
+    allowedHeaders: [
+      "Content-Type",
+      "Authorization",
+      "Idempotency-Key",
+      "X-Correlation-ID",
+    ],
   });
   await app.register(helmet, {
     global: true,
@@ -83,15 +92,24 @@ export async function buildApp(options = {}) {
   });
 
   app.setErrorHandler((error, request, reply) => {
-    const appError = error instanceof AppError;
-    const statusCode = appError ? error.statusCode : error.statusCode >= 400 ? error.statusCode : 500;
+    const normalized =
+      error instanceof AppError ? error : normalizeDatabaseError(error);
+    const appError = normalized instanceof AppError;
+    const statusCode = appError
+      ? normalized.statusCode
+      : error.statusCode >= 400
+        ? error.statusCode
+        : 500;
 
     if (statusCode >= 500) {
-      request.log.error({ err: error, requestId: request.id }, "request_failed");
+      request.log.error(
+        { err: error, requestId: request.id },
+        "request_failed",
+      );
     }
 
     const safeError = appError
-      ? error
+      ? normalized
       : statusCode < 500
         ? new AppError(statusCode, "REQUEST_FAILED", error.message)
         : new AppError(500, "INTERNAL_ERROR", "An unexpected error occurred.");
@@ -101,10 +119,14 @@ export async function buildApp(options = {}) {
 
   app.setNotFoundHandler((request, reply) => {
     if (request.url.startsWith("/api/")) {
-      return reply.code(404).send(errorEnvelope(
-        new AppError(404, "NOT_FOUND", "The API route was not found."),
-        request.id,
-      ));
+      return reply
+        .code(404)
+        .send(
+          errorEnvelope(
+            new AppError(404, "NOT_FOUND", "The API route was not found."),
+            request.id,
+          ),
+        );
     }
     return reply.code(404).send("Not Found");
   });

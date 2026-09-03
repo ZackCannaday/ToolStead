@@ -56,6 +56,10 @@ export function login(credentials) {
   });
 }
 
+export function logout() {
+  return request("/api/v1/auth/logout", { method: "POST" });
+}
+
 export function getCurrentAccount() {
   return request("/api/v1/auth/me");
 }

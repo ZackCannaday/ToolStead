@@ -1,20 +1,26 @@
 import { withWorkspaceTransaction } from "../db/pool.js";
 
 export async function moduleRoutes(app) {
-  app.get("/api/v1/modules", {
-    preHandler: [app.authenticate],
-  }, async (request) => {
-    const result = await withWorkspaceTransaction(
-      app.pg,
-      request.user.workspaceId,
-      (client) => client.query(
-        `
+  app.get(
+    "/api/v1/modules",
+    {
+      preHandler: [app.authenticate],
+    },
+    async (request) => {
+      const result = await withWorkspaceTransaction(
+        app.pg,
+        request.user.workspaceId,
+        (client) =>
+          client.query(
+            `
           SELECT
             m.module_key,
             m.name,
             m.description,
             m.category,
             m.is_core,
+            m.release_status,
+            m.readiness,
             coalesce(e.enabled, false) AS enabled,
             e.source,
             e.limits,
@@ -26,23 +32,26 @@ export async function moduleRoutes(app) {
           WHERE m.is_active = true
           ORDER BY m.is_core DESC, m.category, m.name
         `,
-        [request.user.workspaceId],
-      ),
-    );
+            [request.user.workspaceId],
+          ),
+      );
 
-    return {
-      billingEnforcement: app.config.billingEnforcement,
-      modules: result.rows.map((module) => ({
-        key: module.module_key,
-        name: module.name,
-        description: module.description,
-        category: module.category,
-        core: module.is_core,
-        enabled: module.enabled,
-        source: module.source,
-        limits: module.limits || {},
-        expiresAt: module.expires_at,
-      })),
-    };
-  });
+      return {
+        billingEnforcement: app.config.billingEnforcement,
+        modules: result.rows.map((module) => ({
+          key: module.module_key,
+          name: module.name,
+          description: module.description,
+          category: module.category,
+          core: module.is_core,
+          maturity: module.release_status,
+          readiness: module.readiness || {},
+          enabled: module.enabled,
+          source: module.source,
+          limits: module.limits || {},
+          expiresAt: module.expires_at,
+        })),
+      };
+    },
+  );
 }

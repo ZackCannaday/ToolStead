@@ -1,5 +1,7 @@
-CREATE EXTENSION IF NOT EXISTS pgcrypto;
-CREATE EXTENSION IF NOT EXISTS citext;
+CREATE SCHEMA IF NOT EXISTS extensions;
+CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA extensions;
+CREATE EXTENSION IF NOT EXISTS citext WITH SCHEMA extensions;
+SET search_path = public, extensions;
 
 CREATE OR REPLACE FUNCTION set_updated_at()
 RETURNS trigger

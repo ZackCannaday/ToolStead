@@ -14,13 +14,18 @@ const contactBodySchema = z.object({
   email: z.string().trim().email().max(320).optional().or(z.literal("")),
   phone: z.string().trim().max(40).optional().or(z.literal("")),
   source: z.string().trim().min(1).max(80).default("manual"),
+  stage: z
+    .enum(["New lead", "Contacted", "Qualified", "Won", "Lost"])
+    .default("New lead"),
   summary: z.string().trim().max(2_000).optional().or(z.literal("")),
 });
 
-const contactPatchSchema = contactBodySchema.partial().refine(
-  (value) => Object.keys(value).length > 0,
-  "At least one contact field is required.",
-);
+const contactPatchSchema = contactBodySchema
+  .partial()
+  .refine(
+    (value) => Object.keys(value).length > 0,
+    "At least one contact field is required.",
+  );
 
 const noteSchema = z.object({
   body: z.string().trim().min(1).max(2_000),
@@ -35,6 +40,7 @@ export function formatContact(row) {
     email: row.email || "",
     phone: row.phone || "",
     source: row.source,
+    stage: row.lifecycle_stage || "New lead",
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     timeline: row.timeline || [],
@@ -47,6 +53,7 @@ const contactSelect = `
     c.display_name,
     c.company_name,
     c.source,
+    c.lifecycle_stage,
     c.created_at,
     c.updated_at,
     channels.email,
@@ -80,7 +87,13 @@ const contactSelect = `
   ) timeline ON true
 `;
 
-async function upsertChannel(client, workspaceId, contactId, channelType, value) {
+async function upsertChannel(
+  client,
+  workspaceId,
+  contactId,
+  channelType,
+  value,
+) {
   await client.query(
     "DELETE FROM contact_channels WHERE workspace_id = $1 AND contact_id = $2 AND channel_type = $3",
     [workspaceId, contactId, channelType],
@@ -99,94 +112,225 @@ export async function contactRoutes(app) {
 
   app.get("/api/v1/contacts", { preHandler: guards }, async (request) => {
     const parsed = contactQuerySchema.safeParse(request.query);
-    if (!parsed.success) throw errors.badRequest("The contact filters are invalid.");
+    if (!parsed.success)
+      throw errors.badRequest("The contact filters are invalid.");
 
     const result = await withWorkspaceTransaction(
       app.pg,
       request.user.workspaceId,
-      (client) => client.query(
-        `${contactSelect}
+      (client) =>
+        client.query(
+          `${contactSelect}
          WHERE c.workspace_id = $1
            AND c.archived_at IS NULL
            AND ($2::text = '' OR c.display_name ILIKE '%' || $2 || '%' OR c.company_name ILIKE '%' || $2 || '%' OR channels.email ILIKE '%' || $2 || '%' OR channels.phone ILIKE '%' || $2 || '%')
          ORDER BY c.updated_at DESC
          LIMIT $3`,
-        [request.user.workspaceId, parsed.data.q.trim(), parsed.data.limit],
-      ),
+          [request.user.workspaceId, parsed.data.q.trim(), parsed.data.limit],
+        ),
     );
     return { count: result.rowCount, contacts: result.rows.map(formatContact) };
   });
 
-  app.post("/api/v1/contacts", { preHandler: guards }, async (request, reply) => {
-    const parsed = contactBodySchema.safeParse(request.body);
-    if (!parsed.success) throw errors.badRequest("The contact details are invalid.", parsed.error.flatten());
+  app.post(
+    "/api/v1/contacts",
+    { preHandler: guards },
+    async (request, reply) => {
+      const parsed = contactBodySchema.safeParse(request.body);
+      if (!parsed.success)
+        throw errors.badRequest(
+          "The contact details are invalid.",
+          parsed.error.flatten(),
+        );
 
-    const contact = await withWorkspaceTransaction(app.pg, request.user.workspaceId, async (client) => {
-      const inserted = await client.query(
-        `INSERT INTO contacts (workspace_id, display_name, company_name, source, owner_user_id)
-         VALUES ($1, $2, $3, $4, $5)
+      const contact = await withWorkspaceTransaction(
+        app.pg,
+        request.user.workspaceId,
+        async (client) => {
+          const inserted = await client.query(
+            `INSERT INTO contacts (
+           workspace_id, display_name, company_name, source, lifecycle_stage, owner_user_id
+         )
+         VALUES ($1, $2, $3, $4, $5, $6)
          RETURNING id`,
-        [request.user.workspaceId, parsed.data.displayName, parsed.data.companyName || null, parsed.data.source, request.user.sub],
-      );
-      const contactId = inserted.rows[0].id;
-      await upsertChannel(client, request.user.workspaceId, contactId, "email", parsed.data.email);
-      await upsertChannel(client, request.user.workspaceId, contactId, "phone", parsed.data.phone);
-      await client.query(
-        `INSERT INTO contact_timeline_events (workspace_id, contact_id, event_type, title, body, actor_user_id)
+            [
+              request.user.workspaceId,
+              parsed.data.displayName,
+              parsed.data.companyName || null,
+              parsed.data.source,
+              parsed.data.stage,
+              request.user.sub,
+            ],
+          );
+          const contactId = inserted.rows[0].id;
+          await upsertChannel(
+            client,
+            request.user.workspaceId,
+            contactId,
+            "email",
+            parsed.data.email,
+          );
+          await upsertChannel(
+            client,
+            request.user.workspaceId,
+            contactId,
+            "phone",
+            parsed.data.phone,
+          );
+          await client.query(
+            `INSERT INTO contact_timeline_events (workspace_id, contact_id, event_type, title, body, actor_user_id)
          VALUES ($1, $2, 'lead_created', 'Lead created', $3, $4)`,
-        [request.user.workspaceId, contactId, parsed.data.summary || `Added from ${parsed.data.source}.`, request.user.sub],
+            [
+              request.user.workspaceId,
+              contactId,
+              parsed.data.summary || `Added from ${parsed.data.source}.`,
+              request.user.sub,
+            ],
+          );
+          const selected = await client.query(
+            `${contactSelect} WHERE c.workspace_id = $1 AND c.id = $2`,
+            [request.user.workspaceId, contactId],
+          );
+          return formatContact(selected.rows[0]);
+        },
       );
-      const selected = await client.query(`${contactSelect} WHERE c.workspace_id = $1 AND c.id = $2`, [request.user.workspaceId, contactId]);
-      return formatContact(selected.rows[0]);
-    });
-    return reply.code(201).send({ contact });
-  });
+      return reply.code(201).send({ contact });
+    },
+  );
 
-  app.patch("/api/v1/contacts/:contactId", { preHandler: guards }, async (request) => {
-    const contactId = z.string().uuid().safeParse(request.params.contactId);
-    const parsed = contactPatchSchema.safeParse(request.body);
-    if (!contactId.success) throw errors.badRequest("The contact ID is invalid.");
-    if (!parsed.success) throw errors.badRequest("The contact changes are invalid.", parsed.error.flatten());
+  app.patch(
+    "/api/v1/contacts/:contactId",
+    { preHandler: guards },
+    async (request) => {
+      const contactId = z.string().uuid().safeParse(request.params.contactId);
+      const parsed = contactPatchSchema.safeParse(request.body);
+      if (!contactId.success)
+        throw errors.badRequest("The contact ID is invalid.");
+      if (!parsed.success)
+        throw errors.badRequest(
+          "The contact changes are invalid.",
+          parsed.error.flatten(),
+        );
 
-    return withWorkspaceTransaction(app.pg, request.user.workspaceId, async (client) => {
-      const current = await client.query("SELECT * FROM contacts WHERE workspace_id = $1 AND id = $2 AND archived_at IS NULL", [request.user.workspaceId, contactId.data]);
-      if (!current.rowCount) throw errors.notFound("The contact was not found.");
-      const value = parsed.data;
-      await client.query(
-        `UPDATE contacts SET display_name = $3, company_name = $4, source = $5 WHERE workspace_id = $1 AND id = $2`,
-        [request.user.workspaceId, contactId.data, value.displayName ?? current.rows[0].display_name, value.companyName === undefined ? current.rows[0].company_name : value.companyName || null, value.source ?? current.rows[0].source],
+      return withWorkspaceTransaction(
+        app.pg,
+        request.user.workspaceId,
+        async (client) => {
+          const current = await client.query(
+            "SELECT * FROM contacts WHERE workspace_id = $1 AND id = $2 AND archived_at IS NULL",
+            [request.user.workspaceId, contactId.data],
+          );
+          if (!current.rowCount)
+            throw errors.notFound("The contact was not found.");
+          const value = parsed.data;
+          await client.query(
+            `UPDATE contacts
+         SET display_name = $3,
+             company_name = $4,
+             source = $5,
+             lifecycle_stage = $6
+         WHERE workspace_id = $1 AND id = $2`,
+            [
+              request.user.workspaceId,
+              contactId.data,
+              value.displayName ?? current.rows[0].display_name,
+              value.companyName === undefined
+                ? current.rows[0].company_name
+                : value.companyName || null,
+              value.source ?? current.rows[0].source,
+              value.stage ?? current.rows[0].lifecycle_stage,
+            ],
+          );
+          if (value.stage && value.stage !== current.rows[0].lifecycle_stage) {
+            await client.query(
+              `INSERT INTO contact_timeline_events (
+             workspace_id, contact_id, event_type, title, body, actor_user_id
+           )
+           VALUES ($1, $2, 'stage_changed', 'Lifecycle stage changed', $3, $4)`,
+              [
+                request.user.workspaceId,
+                contactId.data,
+                `${current.rows[0].lifecycle_stage} → ${value.stage}`,
+                request.user.sub,
+              ],
+            );
+          }
+          if (value.email !== undefined)
+            await upsertChannel(
+              client,
+              request.user.workspaceId,
+              contactId.data,
+              "email",
+              value.email,
+            );
+          if (value.phone !== undefined)
+            await upsertChannel(
+              client,
+              request.user.workspaceId,
+              contactId.data,
+              "phone",
+              value.phone,
+            );
+          const selected = await client.query(
+            `${contactSelect} WHERE c.workspace_id = $1 AND c.id = $2`,
+            [request.user.workspaceId, contactId.data],
+          );
+          return { contact: formatContact(selected.rows[0]) };
+        },
       );
-      if (value.email !== undefined) await upsertChannel(client, request.user.workspaceId, contactId.data, "email", value.email);
-      if (value.phone !== undefined) await upsertChannel(client, request.user.workspaceId, contactId.data, "phone", value.phone);
-      const selected = await client.query(`${contactSelect} WHERE c.workspace_id = $1 AND c.id = $2`, [request.user.workspaceId, contactId.data]);
-      return { contact: formatContact(selected.rows[0]) };
-    });
-  });
+    },
+  );
 
-  app.post("/api/v1/contacts/:contactId/notes", { preHandler: guards }, async (request, reply) => {
-    const contactId = z.string().uuid().safeParse(request.params.contactId);
-    const parsed = noteSchema.safeParse(request.body);
-    if (!contactId.success) throw errors.badRequest("The contact ID is invalid.");
-    if (!parsed.success) throw errors.badRequest("The note is invalid.", parsed.error.flatten());
-    const result = await withWorkspaceTransaction(app.pg, request.user.workspaceId, (client) => client.query(
-      `INSERT INTO contact_timeline_events (workspace_id, contact_id, event_type, title, body, actor_user_id)
+  app.post(
+    "/api/v1/contacts/:contactId/notes",
+    { preHandler: guards },
+    async (request, reply) => {
+      const contactId = z.string().uuid().safeParse(request.params.contactId);
+      const parsed = noteSchema.safeParse(request.body);
+      if (!contactId.success)
+        throw errors.badRequest("The contact ID is invalid.");
+      if (!parsed.success)
+        throw errors.badRequest("The note is invalid.", parsed.error.flatten());
+      const result = await withWorkspaceTransaction(
+        app.pg,
+        request.user.workspaceId,
+        (client) =>
+          client.query(
+            `INSERT INTO contact_timeline_events (workspace_id, contact_id, event_type, title, body, actor_user_id)
        SELECT $1, c.id, 'note_added', 'Note added', $3, $4 FROM contacts c
        WHERE c.workspace_id = $1 AND c.id = $2 AND c.archived_at IS NULL
        RETURNING id, event_type, title, body, occurred_at`,
-      [request.user.workspaceId, contactId.data, parsed.data.body, request.user.sub],
-    ));
-    if (!result.rowCount) throw errors.notFound("The contact was not found.");
-    return reply.code(201).send({ event: result.rows[0] });
-  });
+            [
+              request.user.workspaceId,
+              contactId.data,
+              parsed.data.body,
+              request.user.sub,
+            ],
+          ),
+      );
+      if (!result.rowCount) throw errors.notFound("The contact was not found.");
+      return reply.code(201).send({ event: result.rows[0] });
+    },
+  );
 
-  app.delete("/api/v1/contacts/:contactId", { preHandler: [...guards, app.requireRole("owner", "admin", "manager")] }, async (request, reply) => {
-    const contactId = z.string().uuid().safeParse(request.params.contactId);
-    if (!contactId.success) throw errors.badRequest("The contact ID is invalid.");
-    const result = await withWorkspaceTransaction(app.pg, request.user.workspaceId, (client) => client.query(
-      "UPDATE contacts SET archived_at = now() WHERE workspace_id = $1 AND id = $2 AND archived_at IS NULL RETURNING id",
-      [request.user.workspaceId, contactId.data],
-    ));
-    if (!result.rowCount) throw errors.notFound("The contact was not found.");
-    return reply.code(204).send();
-  });
+  app.delete(
+    "/api/v1/contacts/:contactId",
+    { preHandler: [...guards, app.requireRole("owner", "admin", "manager")] },
+    async (request, reply) => {
+      const contactId = z.string().uuid().safeParse(request.params.contactId);
+      if (!contactId.success)
+        throw errors.badRequest("The contact ID is invalid.");
+      const result = await withWorkspaceTransaction(
+        app.pg,
+        request.user.workspaceId,
+        (client) =>
+          client.query(
+            "UPDATE contacts SET archived_at = now() WHERE workspace_id = $1 AND id = $2 AND archived_at IS NULL RETURNING id",
+            [request.user.workspaceId, contactId.data],
+          ),
+      );
+      if (!result.rowCount) throw errors.notFound("The contact was not found.");
+      return reply.code(204).send();
+    },
+  );
 }

@@ -1,5 +1,17 @@
 # Toolstead Priority Flow Workbench — Design QA
 
+## v0.4 verification status
+
+- Production build and Sites packaging: passed.
+- Automated contracts: 21 of 21 passed.
+- Protected-route coverage: CRM, module catalog, work queue, messaging foundation, consent foundation, and appointment foundation all reject unauthenticated requests.
+- Tool status audit: all eight registered tools have explicit implementation evidence and remaining-work evidence; only Lead Intake & CRM is activatable.
+- Runtime dependency audit: zero vulnerabilities.
+- Current browser pass: pending. The cloud review browser cannot open the local-only test server, and the connected v0.4 build has not been deployed yet.
+- Current live database pass: passed. Auth provisioning, CRM RPC access, cross-workspace isolation, rollback cleanup, and the Security Advisor were verified against the connected Supabase project.
+
+The results below are retained as historical evidence for the earlier Priority Flow prototype and do not claim that the current v0.4 catalog/CRM interface has completed visual QA.
+
 ## Result
 
 passed

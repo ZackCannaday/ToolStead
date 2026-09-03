@@ -2,6 +2,49 @@
 
 All meaningful project changes are recorded here.
 
+## 0.4.0 — Supabase connection and tool truth audit
+
+### Added
+
+- Supabase Auth client, owner-workspace provisioning, publishable-key configuration, and authenticated RPC facade.
+- Membership-based Row Level Security policies for customer data.
+- Persisted CRM lifecycle stages and stage filtering.
+- Implementation audit details and readiness checks for all eight registered tools.
+- Automated tests preventing unfinished modules from being labeled available.
+
+### Fixed
+
+- Removed four fabricated preview customer records.
+- Replaced dead global search, notification, workspace, and account controls with working or explicitly unavailable states.
+- Corrected false “Available” claims for seven unfinished tools.
+- Added error handling for CRM notes and archive operations.
+- Prevented a configured Supabase outage or expired session from silently entering local test mode.
+- Added RPC input limits and hardened the shared update trigger search path.
+- Closed entitlement leakage by requiring Messaging and Booking access on their foundation endpoints.
+- Corrected SMS destination lookup, made message idempotency retries timeline-safe, rejected duplicate consent channels, and added appointment timeline events with solo-owner overlap prevention.
+- Converted known PostgreSQL uniqueness, overlap, foreign-key, and validation failures into safe 4xx API responses instead of generic server errors.
+- Hardened Supabase owner provisioning so verified email changes update the existing auth-linked user instead of colliding with the unique mapping.
+- Reduced browser-role table grants to the exact operations required by the authenticated CRM functions.
+- Added the missing authenticated `USAGE` permission for the private authorization-helper schema, discovered by the live RLS test.
+- Reconciled the reused project's restrictive Data API event-trigger policy for the exact Toolstead tables while preserving the deny policy on all legacy tables.
+- Remediated Supabase advisor findings with an explicit server-only session policy, removal of redundant Supabase workspace policies, and covering indexes for every reported foreign key.
+- Added Supabase owner self-registration and email-confirmation handling so credentials never need to be manually inserted or shared in chat.
+
+### Verification
+
+- Production build and Sites packaging passed.
+- 21 automated tests passed, including authentication checks across every implemented or foundation API route.
+- Runtime dependency audit reported zero vulnerabilities.
+- Live Supabase Auth provisioning, CRM RPCs, and cross-workspace RLS isolation passed using rollback-only test identities.
+- Supabase Security Advisor reported zero findings after remediation; only expected unused-index information remains on the empty database.
+- Current responsive browser QA remains gated on deploying this connected build.
+
+### Verified maturity
+
+- Lead Intake & CRM: implemented.
+- Booking & Calendar and Messaging Hub: foundation only.
+- Sites/Funnels/Forms, MarginPilot, Payments, Media Kit, and Analytics: not built.
+
 ## 0.3.0 — Multi-tool platform shell
 
 ### Added

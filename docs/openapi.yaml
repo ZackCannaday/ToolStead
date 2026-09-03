@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Toolstead Platform API
-  version: 0.2.0
+  version: 0.4.0
   description: Workspace, module entitlement, and CRM foundation for Toolstead.
 servers:
   - url: /api/v1
@@ -64,7 +64,7 @@ paths:
       operationId: listWorkspaceModules
       responses:
         "200":
-          description: Available and enabled workspace modules.
+          description: Registered module readiness and workspace entitlements.
         "401":
           $ref: "#/components/responses/Unauthorized"
   /work-queue:
@@ -110,6 +110,58 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "403":
           $ref: "#/components/responses/Forbidden"
+  /contacts:
+    get:
+      operationId: listContacts
+      parameters:
+        - name: q
+          in: query
+          schema:
+            type: string
+            maxLength: 120
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+      responses:
+        "200":
+          description: Active workspace contacts.
+    post:
+      operationId: createContact
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ContactInput"
+      responses:
+        "201":
+          description: Contact created.
+        "400":
+          $ref: "#/components/responses/BadRequest"
+  /contacts/{contactId}:
+    patch:
+      operationId: updateContact
+      parameters:
+        - $ref: "#/components/parameters/ContactId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ContactInput"
+      responses:
+        "200":
+          description: Contact updated.
+    delete:
+      operationId: archiveContact
+      parameters:
+        - $ref: "#/components/parameters/ContactId"
+      responses:
+        "204":
+          description: Contact archived.
   /contacts/{contactId}/timeline:
     get:
       operationId: getContactTimeline
@@ -120,6 +172,31 @@ paths:
           description: Contact timeline.
         "400":
           $ref: "#/components/responses/BadRequest"
+  /contacts/{contactId}/notes:
+    post:
+      operationId: addContactNote
+      parameters:
+        - $ref: "#/components/parameters/ContactId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [body]
+              properties:
+                body:
+                  type: string
+                  minLength: 1
+                  maxLength: 2000
+      responses:
+        "201":
+          description: Timeline note created.
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
   /contacts/{contactId}/messages:
     post:
       operationId: queueContactMessage
@@ -152,7 +229,9 @@ paths:
                   maxLength: 10000
       responses:
         "202":
-          description: Message accepted into the outbox.
+          description: Message accepted into the outbox or the idempotent prior result returned.
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "409":
           description: Consent or destination conflict.
   /contacts/{contactId}/consents:
@@ -160,6 +239,12 @@ paths:
       operationId: recordContactConsent
       parameters:
         - $ref: "#/components/parameters/ContactId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConsentInput"
       responses:
         "201":
           description: Consent evidence recorded.
@@ -170,9 +255,19 @@ paths:
       operationId: createContactAppointment
       parameters:
         - $ref: "#/components/parameters/ContactId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AppointmentInput"
       responses:
         "201":
           description: Appointment created.
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          description: Appointment overlaps an existing requested or confirmed appointment.
 components:
   securitySchemes:
     accessCookie:
@@ -309,6 +404,80 @@ components:
           type: array
           items:
             type: object
+    ContactInput:
+      type: object
+      additionalProperties: false
+      required: [displayName]
+      properties:
+        displayName:
+          type: string
+          minLength: 1
+          maxLength: 180
+        companyName:
+          type: string
+          maxLength: 180
+        email:
+          type: string
+          format: email
+          maxLength: 320
+        phone:
+          type: string
+          maxLength: 40
+        source:
+          type: string
+          maxLength: 80
+        stage:
+          type: string
+          enum: [New lead, Contacted, Qualified, Won, Lost]
+        summary:
+          type: string
+          maxLength: 2000
+    ConsentInput:
+      type: object
+      additionalProperties: false
+      required: [channels]
+      properties:
+        channels:
+          type: array
+          minItems: 1
+          maxItems: 4
+          description: Each channel value may appear only once per request.
+          items:
+            type: object
+            additionalProperties: false
+            required: [channel, status]
+            properties:
+              channel:
+                type: string
+                enum: [email, sms, voice, facebook]
+              status:
+                type: string
+                enum: [granted, revoked, unknown]
+              evidence:
+                type: string
+                maxLength: 1000
+    AppointmentInput:
+      type: object
+      additionalProperties: false
+      required: [title, startsAt, endsAt, timezone]
+      properties:
+        title:
+          type: string
+          minLength: 2
+          maxLength: 180
+        startsAt:
+          type: string
+          format: date-time
+        endsAt:
+          type: string
+          format: date-time
+        timezone:
+          type: string
+          minLength: 3
+          maxLength: 80
+        notes:
+          type: string
+          maxLength: 2000
     Error:
       type: object
       required: [error]
