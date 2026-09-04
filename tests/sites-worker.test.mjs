@@ -41,6 +41,32 @@ test("falls back to index.html for an unknown app route", async () => {
   assert.deepEqual(calls, ["/flow/step-two?source=share", "/index.html"]);
 });
 
+// # Runtime auth config
+test("injects Supabase runtime configuration into the app shell", async () => {
+  const response = await worker.fetch(
+    new Request("https://example.test/", {
+      headers: { accept: "text/html" },
+    }),
+    {
+      VITE_SUPABASE_URL: "https://project.supabase.co",
+      VITE_SUPABASE_PUBLISHABLE_KEY: "sb_publishable_test",
+      ASSETS: {
+        fetch: async () =>
+          new Response("<html><head></head><body></body></html>", {
+            headers: { "content-type": "text/html; charset=utf-8" },
+          }),
+      },
+    },
+  );
+
+  const html = await response.text();
+  assert.match(html, /id="toolstead-runtime-config"/);
+  assert.match(html, /type="application\/json"/);
+  assert.match(html, /https:\/\/project\.supabase\.co/);
+  assert.match(html, /sb_publishable_test/);
+  assert.equal(response.headers.get("cache-control"), "no-store");
+});
+
 test("does not turn missing API or write requests into the app shell", async () => {
   for (const request of [
     new Request("https://example.test/api/missing", { headers: { accept: "application/json" } }),
