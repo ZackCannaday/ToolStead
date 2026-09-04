@@ -34,17 +34,20 @@ import {
 import {
   addContactNote,
   archiveContact,
+  completePasswordRecovery,
   createContact,
   establishConnection,
   getContacts,
   getModules,
   isPersistentProvider,
   requiresRemoteConnection,
+  requestPasswordReset,
   signIn,
   signOut,
   signUp,
   supportsSelfRegistration,
   updateContact,
+  watchPasswordRecovery,
 } from "./data-client.js";
 import {
   MATURITY_PRESENTATION,
@@ -138,17 +141,26 @@ function LoginScreen({ onAuthenticated }) {
   });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
-  const [verificationEmail, setVerificationEmail] = useState("");
+  const [emailNotice, setEmailNotice] = useState(null);
   const canRegister = supportsSelfRegistration();
   const submit = async (event) => {
     event.preventDefault();
     setSubmitting(true);
     setError("");
     try {
-      if (mode === "register") {
+      if (mode === "recover") {
+        await requestPasswordReset(credentials.email);
+        setEmailNotice({
+          title: "Check your email",
+          message: `If a Toolstead account exists for ${credentials.email}, a secure password-reset link is on its way.`,
+        });
+      } else if (mode === "register") {
         const result = await signUp(credentials);
         if (result.verificationRequired) {
-          setVerificationEmail(result.email);
+          setEmailNotice({
+            title: "Check your email",
+            message: `Confirm the link sent to ${result.email}, then return here to sign in.`,
+          });
           return;
         }
         await onAuthenticated(result.account);
@@ -161,16 +173,16 @@ function LoginScreen({ onAuthenticated }) {
       setSubmitting(false);
     }
   };
-  if (verificationEmail) {
+  if (emailNotice) {
     return (
       <ConnectionScreen
-        title="Check your email"
-        message={`Confirm the link sent to ${verificationEmail}, then return here to sign in.`}
+        title={emailNotice.title}
+        message={emailNotice.message}
       >
         <button
           className="primary-button"
           onClick={() => {
-            setVerificationEmail("");
+            setEmailNotice(null);
             setMode("signin");
           }}
         >
@@ -182,12 +194,16 @@ function LoginScreen({ onAuthenticated }) {
   return (
     <ConnectionScreen
       title={
-        mode === "register"
+        mode === "recover"
+          ? "Reset your password"
+          : mode === "register"
           ? "Create your owner workspace"
           : "Sign in to your workspace"
       }
       message={
-        mode === "register"
+        mode === "recover"
+          ? "Enter your account email. We will send a secure reset link if the account exists."
+          : mode === "register"
           ? "Create the first secure owner account for this Toolstead environment."
           : "Use your Toolstead owner account."
       }
@@ -241,21 +257,23 @@ function LoginScreen({ onAuthenticated }) {
             required
           />
         </label>
-        <label>
-          <span>Password</span>
-          <input
-            type="password"
-            minLength="12"
-            value={credentials.password}
-            onChange={(e) =>
-              setCredentials({ ...credentials, password: e.target.value })
-            }
-            autoComplete={
-              mode === "register" ? "new-password" : "current-password"
-            }
-            required
-          />
-        </label>
+        {mode !== "recover" && (
+          <label>
+            <span>Password</span>
+            <input
+              type="password"
+              minLength="12"
+              value={credentials.password}
+              onChange={(e) =>
+                setCredentials({ ...credentials, password: e.target.value })
+              }
+              autoComplete={
+                mode === "register" ? "new-password" : "current-password"
+              }
+              required
+            />
+          </label>
+        )}
         {error && (
           <p className="form-error" role="alert">
             {error}
@@ -264,14 +282,30 @@ function LoginScreen({ onAuthenticated }) {
         <button className="primary-button" disabled={submitting}>
           {submitting ? <SpinnerGap className="spin" /> : <ShieldCheck />}
           {submitting
-            ? mode === "register"
+            ? mode === "recover"
+              ? "Sending reset link…"
+              : mode === "register"
               ? "Creating account…"
               : "Signing in…"
-            : mode === "register"
+            : mode === "recover"
+              ? "Send secure reset link"
+              : mode === "register"
               ? "Create owner account"
               : "Sign in"}
         </button>
-        {canRegister && (
+        {mode === "signin" && (
+          <button
+            type="button"
+            className="text-button auth-mode-button"
+            onClick={() => {
+              setMode("recover");
+              setError("");
+            }}
+          >
+            Forgot your password?
+          </button>
+        )}
+        {canRegister && mode !== "recover" && (
           <button
             type="button"
             className="text-button auth-mode-button"
@@ -285,6 +319,85 @@ function LoginScreen({ onAuthenticated }) {
               : "Need an owner account? Create one"}
           </button>
         )}
+        {mode === "recover" && (
+          <button
+            type="button"
+            className="text-button auth-mode-button"
+            onClick={() => {
+              setMode("signin");
+              setError("");
+            }}
+          >
+            Return to sign in
+          </button>
+        )}
+      </form>
+    </ConnectionScreen>
+  );
+}
+
+function PasswordRecoveryScreen({ onComplete }) {
+  const [password, setPassword] = useState("");
+  const [confirmation, setConfirmation] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
+  const submit = async (event) => {
+    event.preventDefault();
+    setError("");
+    if (password !== confirmation) {
+      setError("The passwords do not match.");
+      return;
+    }
+    setSubmitting(true);
+    try {
+      await completePasswordRecovery(password);
+      window.history.replaceState({}, "", window.location.pathname);
+      onComplete();
+    } catch (reason) {
+      setError(reason.message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+  return (
+    <ConnectionScreen
+      title="Choose a new password"
+      message="Use at least 12 characters. After the change, all existing Toolstead sessions will be signed out."
+    >
+      <form className="stack-form" onSubmit={submit}>
+        <label>
+          <span>New password</span>
+          <input
+            type="password"
+            minLength="12"
+            maxLength="200"
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+            autoComplete="new-password"
+            required
+          />
+        </label>
+        <label>
+          <span>Confirm new password</span>
+          <input
+            type="password"
+            minLength="12"
+            maxLength="200"
+            value={confirmation}
+            onChange={(event) => setConfirmation(event.target.value)}
+            autoComplete="new-password"
+            required
+          />
+        </label>
+        {error && (
+          <p className="form-error" role="alert">
+            {error}
+          </p>
+        )}
+        <button className="primary-button" disabled={submitting}>
+          {submitting ? <SpinnerGap className="spin" /> : <ShieldCheck />}
+          {submitting ? "Updating password…" : "Update password"}
+        </button>
       </form>
     </ConnectionScreen>
   );
@@ -865,6 +978,7 @@ function CrmWorkspace({
 // # Main application
 export function App() {
   const [connectionState, setConnectionState] = useState("checking");
+  const [passwordRecovery, setPasswordRecovery] = useState(false);
   const [connectionError, setConnectionError] = useState("");
   const [workspaceName, setWorkspaceName] = useState(
     "Toolstead Test Workspace",
@@ -917,8 +1031,17 @@ export function App() {
 
   useEffect(() => {
     let cancelled = false;
+    let stopWatchingRecovery = () => {};
     (async () => {
       try {
+        const stopRecoveryListener = await watchPasswordRecovery(() => {
+          if (!cancelled) setPasswordRecovery(true);
+        });
+        if (cancelled) {
+          stopRecoveryListener();
+          return;
+        }
+        stopWatchingRecovery = stopRecoveryListener;
         const connection = await establishConnection();
         if (cancelled) return;
         if (connection.account?.workspace?.name) {
@@ -946,6 +1069,7 @@ export function App() {
     })();
     return () => {
       cancelled = true;
+      stopWatchingRecovery();
     };
   }, []);
 
@@ -1076,6 +1200,15 @@ export function App() {
     setConnectionState("auth");
   };
 
+  if (passwordRecovery)
+    return (
+      <PasswordRecoveryScreen
+        onComplete={() => {
+          setPasswordRecovery(false);
+          setConnectionState("auth");
+        }}
+      />
+    );
   if (connectionState === "checking")
     return (
       <ConnectionScreen
