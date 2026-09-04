@@ -23,6 +23,7 @@ import {
   PhoneCall,
   Plus,
   ShieldCheck,
+  SignOut as SignOutIcon,
   Sparkle,
   SpinnerGap,
   Storefront,
@@ -1034,9 +1035,17 @@ export function App() {
     let stopWatchingRecovery = () => {};
     (async () => {
       try {
-        const stopRecoveryListener = await watchPasswordRecovery(() => {
-          if (!cancelled) setPasswordRecovery(true);
-        });
+        const stopRecoveryListener = await watchPasswordRecovery(
+          () => {
+            if (!cancelled) setPasswordRecovery(true);
+          },
+          () => {
+            if (cancelled) return;
+            setContacts([]);
+            setModules([]);
+            setConnectionState("auth");
+          },
+        );
         if (cancelled) {
           stopRecoveryListener();
           return;
@@ -1194,10 +1203,14 @@ export function App() {
   };
   const handleSignOut = async () => {
     setAccountOpen(false);
-    await signOut();
-    setContacts([]);
-    setModules([]);
-    setConnectionState("auth");
+    try {
+      await signOut();
+      setContacts([]);
+      setModules([]);
+      setConnectionState("auth");
+    } catch (error) {
+      announce(error.message || "Sign out failed. Please try again.");
+    }
   };
 
   if (passwordRecovery)
@@ -1299,6 +1312,7 @@ export function App() {
               className="profile-button"
               onClick={() => setAccountOpen((open) => !open)}
               aria-expanded={accountOpen}
+              aria-label="Open account menu"
             >
               <img src="/assets/user-avatar.png" alt="Owner profile" />
               <CaretDown />
@@ -1379,6 +1393,12 @@ export function App() {
           </div>
           <button onClick={() => navigate("library")}>Review readiness</button>
         </div>
+        {isPersistentProvider() && (
+          <button className="sidebar-signout" onClick={handleSignOut}>
+            <SignOutIcon />
+            <span>Sign out</span>
+          </button>
+        )}
       </aside>
       <section className="content-shell">
         {connectionState === "local" && (
