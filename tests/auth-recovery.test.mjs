@@ -21,3 +21,18 @@ test("recovery UI requires confirmation and does not reveal account existence", 
   assert.match(app, /minLength="12"/);
   assert.match(app, /Forgot your password\?/);
 });
+
+// # Session protection
+test("production requires authentication and exposes sign out", async () => {
+  const dataClient = await readFile(
+    new URL("../src/data-client.js", import.meta.url),
+    "utf8",
+  );
+  const app = await readFile(new URL("../src/App.jsx", import.meta.url), "utf8");
+  assert.match(dataClient, /if \(isProduction\)/);
+  assert.match(dataClient, /AUTH_CONFIGURATION_MISSING/);
+  assert.match(dataClient, /event === "SIGNED_OUT"/);
+  assert.match(dataClient, /signOut\(\{ scope: "local" \}\)/);
+  assert.match(app, /className="sidebar-signout"/);
+  assert.match(app, />Sign out</);
+});
