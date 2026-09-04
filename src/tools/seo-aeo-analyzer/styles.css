@@ -1,0 +1,486 @@
+/* # Workspace shell */
+.tsa-workspace {
+  width: min(100%, 1460px);
+  margin: 0 auto;
+  color: #dce8f4;
+  font-family: inherit;
+}
+
+.tsa-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 28px;
+  padding: 0 0 24px;
+}
+
+.tsa-header h1,
+.tsa-panel h2,
+.tsa-finding h3 {
+  margin: 0;
+  color: #f8fbff;
+}
+
+.tsa-header h1 {
+  margin-top: 6px;
+  font-size: clamp(28px, 3vw, 42px);
+  letter-spacing: -0.045em;
+}
+
+.tsa-header p {
+  max-width: 680px;
+  margin: 9px 0 0;
+  color: #91a8bd;
+  line-height: 1.6;
+}
+
+.tsa-eyebrow,
+.tsa-step {
+  color: #48c7ff;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.tsa-private-badge,
+.tsa-pass-count {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid rgba(72, 199, 255, 0.26);
+  border-radius: 999px;
+  padding: 7px 10px;
+  color: #8ddcff;
+  background: rgba(18, 83, 119, 0.23);
+  font-size: 11px;
+  font-weight: 750;
+  white-space: nowrap;
+}
+
+.tsa-grid {
+  display: grid;
+  grid-template-columns: minmax(360px, 0.83fr) minmax(500px, 1.17fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.tsa-panel {
+  border: 1px solid rgba(139, 174, 203, 0.17);
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(15, 37, 58, 0.98), rgba(9, 27, 44, 0.98));
+  box-shadow: 0 24px 54px rgba(1, 10, 19, 0.2);
+}
+
+/* # Input controls */
+.tsa-form {
+  display: grid;
+  gap: 18px;
+  padding: 22px;
+}
+
+.tsa-panel-heading,
+.tsa-findings-heading,
+.tsa-finding-title {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.tsa-panel-heading h2,
+.tsa-findings-heading h2 {
+  margin-top: 4px;
+  font-size: 19px;
+  letter-spacing: -0.02em;
+}
+
+.tsa-clear {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  padding: 7px;
+  color: #9eb3c7;
+  background: transparent;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.tsa-clear svg {
+  width: 16px;
+  height: 16px;
+}
+
+.tsa-clear:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.tsa-field {
+  display: grid;
+  gap: 7px;
+}
+
+.tsa-field > span {
+  color: #cdddeb;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.tsa-field input,
+.tsa-field textarea {
+  width: 100%;
+  border: 1px solid rgba(145, 174, 198, 0.24);
+  border-radius: 9px;
+  padding: 11px 12px;
+  color: #edf6ff;
+  background: rgba(4, 18, 31, 0.62);
+  outline: none;
+  resize: vertical;
+  transition: border-color 0.16s ease, box-shadow 0.16s ease;
+}
+
+.tsa-field input::placeholder,
+.tsa-field textarea::placeholder {
+  color: #607d95;
+}
+
+.tsa-field input:focus,
+.tsa-field textarea:focus {
+  border-color: #3cbcf4;
+  box-shadow: 0 0 0 3px rgba(46, 169, 229, 0.13);
+}
+
+.tsa-field small {
+  color: #7891a8;
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.tsa-run {
+  min-height: 46px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  border: 0;
+  border-radius: 9px;
+  color: #031421;
+  background: linear-gradient(135deg, #5bd1ff, #36a8ea);
+  box-shadow: 0 10px 24px rgba(20, 155, 219, 0.2);
+  cursor: pointer;
+  font-weight: 850;
+}
+
+.tsa-run:hover {
+  filter: brightness(1.06);
+  transform: translateY(-1px);
+}
+
+.tsa-run svg {
+  width: 19px;
+  height: 19px;
+}
+
+/* # Results states */
+.tsa-results {
+  min-height: 660px;
+  overflow: hidden;
+}
+
+.tsa-empty {
+  min-height: 660px;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  padding: 42px;
+  text-align: center;
+}
+
+.tsa-empty-icon {
+  width: 64px;
+  height: 64px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(72, 199, 255, 0.24);
+  border-radius: 18px;
+  color: #54caff;
+  background: rgba(42, 150, 205, 0.08);
+}
+
+.tsa-empty-icon svg {
+  width: 30px;
+  height: 30px;
+}
+
+.tsa-empty h2 {
+  margin-top: 22px;
+  font-size: 23px;
+}
+
+.tsa-empty p {
+  max-width: 440px;
+  margin: 10px 0 18px;
+  color: #8fa6ba;
+  line-height: 1.6;
+}
+
+.tsa-empty ul {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  color: #adc0d0;
+  font-size: 12px;
+  list-style: none;
+}
+
+.tsa-empty li::before {
+  content: "✓";
+  margin-right: 8px;
+  color: #48c7ff;
+}
+
+.tsa-error-state {
+  display: flex;
+  gap: 14px;
+  margin: 22px;
+  border: 1px solid rgba(248, 113, 113, 0.35);
+  border-radius: 12px;
+  padding: 18px;
+  color: #fda4af;
+  background: rgba(127, 29, 29, 0.18);
+}
+
+.tsa-error-state > svg {
+  flex: 0 0 auto;
+  width: 23px;
+  height: 23px;
+}
+
+.tsa-error-state h2 {
+  font-size: 17px;
+}
+
+.tsa-error-state p {
+  margin: 7px 0 0;
+  font-size: 12px;
+}
+
+/* # Audit details */
+.tsa-audit {
+  display: grid;
+}
+
+.tsa-score-row {
+  display: grid;
+  grid-template-columns: 112px 1fr;
+  gap: 24px;
+  align-items: center;
+  padding: 25px;
+  border-bottom: 1px solid rgba(139, 174, 203, 0.13);
+  background: linear-gradient(135deg, rgba(27, 81, 116, 0.18), transparent 60%);
+}
+
+.tsa-score {
+  position: relative;
+  width: 112px;
+  aspect-ratio: 1;
+  display: grid;
+  place-content: center;
+  border-radius: 50%;
+  background: conic-gradient(#43c7ff var(--score), rgba(121, 156, 183, 0.18) 0);
+}
+
+.tsa-score::after {
+  position: absolute;
+  inset: 8px;
+  border-radius: 50%;
+  background: #0d273d;
+  content: "";
+}
+
+.tsa-score strong,
+.tsa-score span {
+  position: relative;
+  z-index: 1;
+  text-align: center;
+}
+
+.tsa-score strong {
+  color: #f7fbff;
+  font-size: 31px;
+  letter-spacing: -0.05em;
+}
+
+.tsa-score span {
+  color: #7895aa;
+  font-size: 10px;
+}
+
+.tsa-score-row h2 {
+  margin-top: 3px;
+  font-size: 25px;
+}
+
+.tsa-score-row p {
+  margin: 7px 0 12px;
+  color: #8fa7bb;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.tsa-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  margin: 0;
+  border-bottom: 1px solid rgba(139, 174, 203, 0.13);
+}
+
+.tsa-metrics div {
+  min-width: 0;
+  padding: 17px 20px;
+  border-right: 1px solid rgba(139, 174, 203, 0.13);
+}
+
+.tsa-metrics div:last-child {
+  border-right: 0;
+}
+
+.tsa-metrics dt {
+  color: #718da4;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.tsa-metrics dd {
+  margin: 6px 0 0;
+  color: #e8f3fc;
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.tsa-findings-heading {
+  align-items: center;
+  padding: 22px 24px 14px;
+}
+
+.tsa-findings-heading > svg {
+  width: 24px;
+  height: 24px;
+  color: #f5b94f;
+}
+
+.tsa-findings {
+  display: grid;
+  gap: 10px;
+  padding: 0 16px 20px;
+}
+
+.tsa-finding {
+  display: grid;
+  grid-template-columns: 22px 1fr;
+  gap: 11px;
+  border: 1px solid rgba(139, 174, 203, 0.13);
+  border-radius: 10px;
+  padding: 15px;
+  background: rgba(4, 18, 31, 0.36);
+}
+
+.tsa-status-icon {
+  width: 20px;
+  height: 20px;
+}
+
+.tsa-status-pass .tsa-status-icon { color: #45d2a0; }
+.tsa-status-warning .tsa-status-icon { color: #f5b94f; }
+.tsa-status-error .tsa-status-icon { color: #fb7185; }
+
+.tsa-finding-title span {
+  color: #6f8ba2;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.tsa-finding-title h3 {
+  margin-top: 3px;
+  font-size: 14px;
+  line-height: 1.35;
+}
+
+.tsa-finding-title > strong {
+  color: #a7bed0;
+  font-size: 11px;
+}
+
+.tsa-finding p {
+  margin: 8px 0 0;
+  color: #92a9bb;
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.tsa-finding p b {
+  color: #c4d6e4;
+}
+
+/* # Responsive layout */
+@media (max-width: 980px) {
+  .tsa-grid {
+    grid-template-columns: 1fr;
+  }
+  .tsa-results,
+  .tsa-empty {
+    min-height: 440px;
+  }
+}
+
+@media (max-width: 620px) {
+  .tsa-header {
+    display: grid;
+  }
+  .tsa-private-badge {
+    justify-self: start;
+  }
+  .tsa-form {
+    padding: 17px;
+  }
+  .tsa-score-row {
+    grid-template-columns: 86px 1fr;
+    gap: 16px;
+    padding: 20px 17px;
+  }
+  .tsa-score {
+    width: 86px;
+  }
+  .tsa-score strong {
+    font-size: 25px;
+  }
+  .tsa-metrics {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .tsa-metrics div:nth-child(2) {
+    border-right: 0;
+  }
+  .tsa-metrics div:nth-child(-n+2) {
+    border-bottom: 1px solid rgba(139, 174, 203, 0.13);
+  }
+  .tsa-finding-title {
+    display: grid;
+  }
+  .tsa-finding-title > strong {
+    grid-row: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tsa-run,
+  .tsa-field input,
+  .tsa-field textarea {
+    transition: none;
+  }
+}
