@@ -2,6 +2,17 @@
 
 All meaningful project changes are recorded here.
 
+## Unreleased
+
+### Added
+
+- Secure Supabase password recovery from the Toolstead sign-in screen.
+- Recovery-link handling, 12-character password confirmation, and global session revocation after a successful reset.
+
+### Verified
+
+- The requested owner email is not currently registered in the connected Toolstead Supabase project.
+
 ## 0.4.0 — Supabase connection and tool truth audit
 
 ### Added
