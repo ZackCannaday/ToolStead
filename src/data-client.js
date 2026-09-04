@@ -3,9 +3,25 @@ import * as nodeApi from "./api.js";
 // # Active data provider
 let provider = "local";
 let supabaseClient;
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL?.trim();
-const supabaseKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY?.trim();
+const runtimeConfigElement = globalThis.document?.getElementById(
+  "toolstead-runtime-config",
+);
+let runtimeConfig = {};
+try {
+  runtimeConfig = JSON.parse(runtimeConfigElement?.textContent || "{}");
+} catch {
+  runtimeConfig = {};
+}
+const supabaseUrl = (
+  runtimeConfig.supabaseUrl || import.meta.env.VITE_SUPABASE_URL || ""
+).trim();
+const supabaseKey = (
+  runtimeConfig.supabasePublishableKey ||
+  import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
+  ""
+).trim();
 const hasSupabaseConfig = Boolean(supabaseUrl && supabaseKey);
+const isProduction = import.meta.env.PROD;
 
 async function getSupabase() {
   if (!hasSupabaseConfig) return null;
@@ -57,6 +73,14 @@ export async function establishConnection() {
       return { state: "auth", provider };
     }
     return { state: "supabase", provider, account: await getSupabaseContext() };
+  }
+
+  if (isProduction) {
+    throw new nodeApi.ApiError(
+      "Toolstead authentication is not configured for this deployment.",
+      503,
+      "AUTH_CONFIGURATION_MISSING",
+    );
   }
 
   try {
@@ -144,11 +168,12 @@ export async function requestPasswordReset(email) {
   }
 }
 
-export async function watchPasswordRecovery(onRecovery) {
+export async function watchPasswordRecovery(onRecovery, onSignedOut) {
   const supabase = await getSupabase();
   if (!supabase) return () => {};
   const { data } = supabase.auth.onAuthStateChange((event) => {
     if (event === "PASSWORD_RECOVERY") onRecovery();
+    if (event === "SIGNED_OUT") onSignedOut?.();
   });
   return () => data.subscription.unsubscribe();
 }
@@ -175,7 +200,7 @@ export async function completePasswordRecovery(password) {
 export async function signOut() {
   if (provider === "supabase") {
     const supabase = await getSupabase();
-    unwrap(await supabase.auth.signOut(), "Sign out failed.");
+    unwrap(await supabase.auth.signOut({ scope: "local" }), "Sign out failed.");
     return;
   }
   if (provider === "api") await nodeApi.logout();
@@ -281,7 +306,7 @@ export function isPersistentProvider() {
 }
 
 export function requiresRemoteConnection() {
-  return hasSupabaseConfig;
+  return isProduction || hasSupabaseConfig;
 }
 
 export function supportsSelfRegistration() {
