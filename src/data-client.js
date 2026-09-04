@@ -122,6 +122,56 @@ export async function signUp(registration) {
   return { account: await getSupabaseContext() };
 }
 
+// # Password recovery
+export async function requestPasswordReset(email) {
+  if (provider !== "supabase") {
+    throw new nodeApi.ApiError(
+      "Password recovery requires the Supabase connection.",
+      503,
+      "RECOVERY_UNAVAILABLE",
+    );
+  }
+  const supabase = await getSupabase();
+  const { error } = await supabase.auth.resetPasswordForEmail(email, {
+    redirectTo: window.location.origin,
+  });
+  if (error) {
+    throw new nodeApi.ApiError(
+      "The recovery email could not be sent. Please try again shortly.",
+      400,
+      "RECOVERY_REQUEST_FAILED",
+    );
+  }
+}
+
+export async function watchPasswordRecovery(onRecovery) {
+  const supabase = await getSupabase();
+  if (!supabase) return () => {};
+  const { data } = supabase.auth.onAuthStateChange((event) => {
+    if (event === "PASSWORD_RECOVERY") onRecovery();
+  });
+  return () => data.subscription.unsubscribe();
+}
+
+export async function completePasswordRecovery(password) {
+  const supabase = await getSupabase();
+  if (!supabase) {
+    throw new nodeApi.ApiError(
+      "Password recovery requires the Supabase connection.",
+      503,
+      "RECOVERY_UNAVAILABLE",
+    );
+  }
+  unwrap(
+    await supabase.auth.updateUser({ password }),
+    "The password could not be updated. Request a new recovery link.",
+  );
+  unwrap(
+    await supabase.auth.signOut({ scope: "global" }),
+    "The password changed, but existing sessions could not be closed.",
+  );
+}
+
 export async function signOut() {
   if (provider === "supabase") {
     const supabase = await getSupabase();
