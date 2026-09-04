@@ -4,6 +4,10 @@ All meaningful project changes are recorded here.
 
 ## Unreleased
 
+- Prevent production deployments from falling back to unauthenticated local test mode.
+- Inject the public Supabase browser configuration from the Sites runtime environment.
+- Add a clearly labeled sidebar sign-out control and respond to Supabase `SIGNED_OUT` events.
+
 ### Added
 
 - Secure Supabase password recovery from the Toolstead sign-in screen.
