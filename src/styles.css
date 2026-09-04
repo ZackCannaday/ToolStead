@@ -511,6 +511,33 @@ select:focus-visible {
   background: #f3f6f9;
   cursor: pointer;
 }
+.sidebar-signout {
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+  border: 1px solid #dce3ea;
+  border-radius: 8px;
+  padding: 10px 12px;
+  color: #34445a;
+  background: #fff;
+  font-size: 12px;
+  font-weight: 750;
+  cursor: pointer;
+}
+.sidebar-signout:hover {
+  border-color: #b8c5d1;
+  background: #f3f6f9;
+}
+.sidebar-signout:focus-visible {
+  outline: 3px solid rgba(43, 104, 201, 0.28);
+  outline-offset: 2px;
+}
+.sidebar-signout svg {
+  width: 18px;
+  height: 18px;
+}
 .mobile-menu-button {
   display: none;
 }
