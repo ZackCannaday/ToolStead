@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import {
   AddressBook,
   PersonSimpleCircle,
@@ -64,6 +64,13 @@ import {
   mergeToolEntitlements,
 } from "./tool-registry.js";
 import ToolWorkspaceErrorBoundary from "./components/tool-workspace-error-boundary.js";
+import AccessibilityAuditor from "./tools/accessibility-auditor/index.js";
+import DecisionTreeBuilder from "./tools/diagnostic-decision-tree/builder.jsx";
+import DiagnosticDecisionTreeWorkspace from "./tools/diagnostic-decision-tree/index.jsx";
+import ProjectMaterialPlanner from "./tools/project-material-planner/index.jsx";
+import QuoteInvoiceBuilder from "./tools/quote-invoice-builder/index.jsx";
+import SeoAeoAnalyzer from "./tools/seo-aeo-analyzer/index.jsx";
+import TestCaseGenerator from "./tools/test-case-generator/index.js";
 import {
   PREVIEW_QUERY_KEY,
   selectPreviewTools,
@@ -110,14 +117,6 @@ const NAV_ITEMS = [
 ];
 
 // # Runnable workspaces
-const AccessibilityAuditor = lazy(() => import("./tools/accessibility-auditor/index.js"));
-const DecisionTreeBuilder = lazy(() => import("./tools/diagnostic-decision-tree/builder.jsx"));
-const DiagnosticDecisionTreeWorkspace = lazy(() => import("./tools/diagnostic-decision-tree/index.jsx"));
-const ProjectMaterialPlanner = lazy(() => import("./tools/project-material-planner/index.jsx"));
-const QuoteInvoiceBuilder = lazy(() => import("./tools/quote-invoice-builder/index.jsx"));
-const SeoAeoAnalyzer = lazy(() => import("./tools/seo-aeo-analyzer/index.jsx"));
-const TestCaseGenerator = lazy(() => import("./tools/test-case-generator/index.js"));
-
 const TOOL_COMPONENTS = Object.freeze({
   "search-visibility": SeoAeoAnalyzer,
   "accessibility-auditor": AccessibilityAuditor,

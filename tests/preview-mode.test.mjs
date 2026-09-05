@@ -98,6 +98,25 @@ test("preview shell bypasses connection discovery and excludes protected surface
   }
 });
 
+test("preview workspaces ship in the entry bundle without click-time module authorization", async () => {
+  const source = await import("node:fs/promises").then((fs) =>
+    fs.readFile(new URL("../src/App.jsx", import.meta.url), "utf8"),
+  );
+  const workspaceModules = [
+    "accessibility-auditor/index.js",
+    "diagnostic-decision-tree/builder.jsx",
+    "diagnostic-decision-tree/index.jsx",
+    "project-material-planner/index.jsx",
+    "quote-invoice-builder/index.jsx",
+    "seo-aeo-analyzer/index.jsx",
+    "test-case-generator/index.js",
+  ];
+  for (const modulePath of workspaceModules) {
+    assert.match(source, new RegExp(`import .+ from \"\\./tools/${modulePath.replaceAll(".", "\\.")}\";`));
+    assert.doesNotMatch(source, new RegExp(`import\\(\"\\./tools/${modulePath.replaceAll(".", "\\.")}\"\\)`));
+  }
+});
+
 test("preview mode requires the exact opt-in value", () => {
   for (const search of ["", "?toolstead-preview=0", "?toolstead-preview=true"]) {
     assert.equal(

@@ -18,6 +18,7 @@ All meaningful project changes are recorded here.
 - Inject the public Supabase browser configuration from the Sites runtime environment.
 - Add a clearly labeled sidebar sign-out control and respond to Supabase `SIGNED_OUT` events.
 - Add an explicit public, isolated `toolstead-preview=1` sandbox for the six client-only Wave 1 tools while keeping CRM, accounts, tenant data, persistence, and APIs behind authentication.
+- Bundle preview workspaces with the application entry so public mobile browsers do not require separate authorization for lazy-loaded tool chunks.
 
 ### Added
 
