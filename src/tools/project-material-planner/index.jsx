@@ -2,9 +2,11 @@ import { useMemo, useState } from "react";
 import {
   Calculator,
   CurrencyDollar,
+  DownloadSimple,
   Hammer,
   Package,
   Plus,
+  ShieldWarning,
   Trash,
   Users,
   WarningCircle,
@@ -16,17 +18,21 @@ import {
   MATERIAL_UNITS,
   TOOL_CATEGORIES,
   TOOL_MANIFEST,
+  WORK_CATEGORIES,
+  SAFETY_BOUNDARIES,
   calculateCutItem,
   calculateMaterial,
   calculateProjectPlan,
   roundCurrency,
   roundQuantity,
+  serializeProjectPlan,
   validateBuildStep,
   validateCutItem,
   validateLabor,
   validateMaterial,
   validateOtherCost,
   validateProjectPlan,
+  validateScope,
   validateToolItem,
 } from "./planner.js";
 import "./styles.css";
@@ -38,17 +44,21 @@ export {
   MATERIAL_UNITS,
   TOOL_CATEGORIES,
   TOOL_MANIFEST,
+  WORK_CATEGORIES,
+  SAFETY_BOUNDARIES,
   calculateMaterial,
   calculateCutItem,
   calculateProjectPlan,
   roundCurrency,
   roundQuantity,
+  serializeProjectPlan,
   validateBuildStep,
   validateCutItem,
   validateLabor,
   validateMaterial,
   validateOtherCost,
   validateProjectPlan,
+  validateScope,
   validateToolItem,
 };
 
@@ -151,6 +161,8 @@ export default function ProjectMaterialPlanner() {
     intendedUse: "",
     aestheticRequirements: "",
     materialTypes: "",
+    workCategory: "",
+    professionalReviewConfirmed: false,
   });
   const [materials, setMaterials] = useState([]);
   const [cutList, setCutList] = useState([]);
@@ -160,6 +172,7 @@ export default function ProjectMaterialPlanner() {
   const [otherCosts, setOtherCosts] = useState([]);
   const [budget, setBudget] = useState("");
   const [showErrors, setShowErrors] = useState(false);
+  const [exportStatus, setExportStatus] = useState("");
 
   const plan = useMemo(
     () => ({ scope, materials, cutList, tools, buildSteps, labor, otherCosts, budget }),
@@ -183,6 +196,22 @@ export default function ProjectMaterialPlanner() {
   };
 
   const calculate = () => setShowErrors(true);
+  const exportPlan = () => {
+    setShowErrors(true);
+    if (!result.ok) {
+      setExportStatus("Resolve validation errors before exporting.");
+      return;
+    }
+    const content = serializeProjectPlan(plan);
+    const filename = `${scope.projectName.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "project-plan"}.json`;
+    const url = URL.createObjectURL(new Blob([content], { type: "application/json" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    link.click();
+    URL.revokeObjectURL(url);
+    setExportStatus(`Exported ${filename}`);
+  };
   const totals = result.ok
     ? result.totals
     : { materialSubtotal: 0, laborSubtotal: 0, otherSubtotal: 0, total: 0 };
@@ -222,28 +251,74 @@ export default function ProjectMaterialPlanner() {
         </div>
         <div className="pmp-scope-grid">
           {[
-            ["projectName", "Project name"],
-            ["finalDimensions", "Final dimensions"],
-            ["intendedUse", "Intended use"],
-            ["materialTypes", "Material types"],
-            ["aestheticRequirements", "Aesthetic requirements"],
-          ].map(([field, label]) => (
+            ["projectName", "Project name", 120],
+            ["finalDimensions", "Final dimensions", 240],
+            ["intendedUse", "Intended use", 240],
+            ["materialTypes", "Material types", 240],
+            ["aestheticRequirements", "Aesthetic requirements", 240],
+          ].map(([field, label, maxLength]) => (
             <label className={`pmp-field ${field === "aestheticRequirements" ? "pmp-span-two" : ""}`} key={field}>
               <span>{label}</span>
               <input
                 value={scope[field]}
-                maxLength="240"
+                maxLength={maxLength}
                 onChange={(event) => setScope((current) => ({ ...current, [field]: event.target.value }))}
+                aria-invalid={showErrors && errors.has(`scope.${field}`)}
               />
+              {showErrors && errors.has(`scope.${field}`) && <small>{errors.get(`scope.${field}`)}</small>}
             </label>
           ))}
+          <label className="pmp-field">
+            <span>Work category</span>
+            <select
+              value={scope.workCategory}
+              onChange={(event) => setScope((current) => ({
+                ...current,
+                workCategory: event.target.value,
+                professionalReviewConfirmed: false,
+              }))}
+              aria-invalid={showErrors && errors.has("scope.workCategory")}
+            >
+              <option value="">Select category</option>
+              {WORK_CATEGORIES.map((category) => (
+                <option key={category.value} value={category.value}>{category.label}</option>
+              ))}
+            </select>
+            {showErrors && errors.has("scope.workCategory") && <small>{errors.get("scope.workCategory")}</small>}
+          </label>
+          {WORK_CATEGORIES.find((category) => category.value === scope.workCategory)?.regulated && (
+            <label className="pmp-check pmp-review-check">
+              <input
+                type="checkbox"
+                checked={scope.professionalReviewConfirmed}
+                onChange={(event) => setScope((current) => ({ ...current, professionalReviewConfirmed: event.target.checked }))}
+                aria-invalid={showErrors && errors.has("scope.professionalReviewConfirmed")}
+              />
+              <span>I understand this plan requires qualified professional review before work begins.</span>
+              {showErrors && errors.has("scope.professionalReviewConfirmed") && <small>{errors.get("scope.professionalReviewConfirmed")}</small>}
+            </label>
+          )}
         </div>
+        <aside className="pmp-boundary" aria-label="Safety and scope boundaries">
+          <ShieldWarning aria-hidden="true" />
+          <div>
+            <strong>Planning boundary</strong>
+            <ul>{SAFETY_BOUNDARIES.map((boundary) => <li key={boundary}>{boundary}</li>)}</ul>
+          </div>
+        </aside>
       </section>
 
       {showErrors && !validation.valid && (
         <div className="pmp-alert" role="alert">
           <WarningCircle aria-hidden="true" />
           <span>Review {validation.errors.length} highlighted field{validation.errors.length === 1 ? "" : "s"}.</span>
+        </div>
+      )}
+
+      {showErrors && validation.valid && validation.warnings.length > 0 && (
+        <div className="pmp-advisory" role="status">
+          <WarningCircle aria-hidden="true" />
+          <div><strong>Plan is valid with {validation.warnings.length} readiness note{validation.warnings.length === 1 ? "" : "s"}</strong><ul>{validation.warnings.map((warning) => <li key={`${warning.path}-${warning.message}`}>{warning.message}</li>)}</ul></div>
         </div>
       )}
 
@@ -357,9 +432,9 @@ export default function ProjectMaterialPlanner() {
             const prefix = `buildSteps.${index}`;
             return <li className="pmp-row pmp-step-row" key={item.id}>
               <span className="pmp-step-number" aria-hidden="true">{index + 1}</span>
-              <label className="pmp-field"><span>Phase</span><select value={item.phase} onChange={(event) => updateRow(setBuildSteps, item.id, "phase", event.target.value)}>{BUILD_PHASES.map((phase) => <option key={phase}>{phase}</option>)}</select></label>
+              <label className="pmp-field"><span>Phase</span><select value={item.phase} onChange={(event) => updateRow(setBuildSteps, item.id, "phase", event.target.value)} aria-invalid={showErrors && errors.has(`${prefix}.phase`)}>{BUILD_PHASES.map((phase) => <option key={phase}>{phase}</option>)}</select>{showErrors && errors.has(`${prefix}.phase`) && <small>{errors.get(`${prefix}.phase`)}</small>}</label>
               <label className="pmp-field pmp-name"><span>Instruction</span><input value={item.instruction} maxLength="300" onChange={(event) => updateRow(setBuildSteps, item.id, "instruction", event.target.value)} aria-invalid={showErrors && errors.has(`${prefix}.instruction`)} />{showErrors && errors.has(`${prefix}.instruction`) && <small>{errors.get(`${prefix}.instruction`)}</small>}</label>
-              <label className="pmp-check"><input type="checkbox" checked={item.dryFitCheckpoint} onChange={(event) => updateRow(setBuildSteps, item.id, "dryFitCheckpoint", event.target.checked)} /><span>Dry-fit checkpoint</span></label>
+              <label className="pmp-check"><input type="checkbox" checked={item.dryFitCheckpoint} onChange={(event) => updateRow(setBuildSteps, item.id, "dryFitCheckpoint", event.target.checked)} aria-invalid={showErrors && errors.has(`${prefix}.dryFitCheckpoint`)} /><span>Dry-fit checkpoint</span>{showErrors && errors.has(`${prefix}.dryFitCheckpoint`) && <small>{errors.get(`${prefix}.dryFitCheckpoint`)}</small>}</label>
               <button className="pmp-remove" type="button" onClick={() => removeRow(setBuildSteps, item.id)} aria-label={`Remove build step ${index + 1}`}><Trash aria-hidden="true" /></button>
             </li>;
           })}</ol>}
@@ -418,13 +493,12 @@ export default function ProjectMaterialPlanner() {
           <div className="pmp-grand-total"><dt>Estimated total</dt><dd>{money(totals.total)}</dd></div>
           {result.ok && totals.budget !== null && <div className={totals.overBudget ? "pmp-budget-over" : "pmp-budget-under"}><dt>{totals.overBudget ? "Over budget" : "Budget remaining"}</dt><dd>{money(Math.abs(totals.budgetDifference))}</dd></div>}
         </dl>
-        <button className="pmp-calculate" type="button" onClick={calculate}><Calculator aria-hidden="true" /> Validate plan</button>
+        <div className="pmp-summary-actions">
+          <button className="pmp-calculate pmp-secondary" type="button" onClick={calculate}><Calculator aria-hidden="true" /> Validate plan</button>
+          <button className="pmp-calculate" type="button" onClick={exportPlan}><DownloadSimple aria-hidden="true" /> Export JSON</button>
+          {exportStatus && <small role="status">{exportStatus}</small>}
+        </div>
       </section>
     </main>
   );
 }
-  validateBuildStep,
-  validateCutItem,
-  calculateCutItem,
-  validateBuildStep,
-  validateCutItem,

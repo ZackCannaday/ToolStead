@@ -1,5 +1,8 @@
 const MAX_REQUIREMENTS = 200;
 const MAX_REQUIREMENT_LENGTH = 2_000;
+const MAX_SOURCE_LENGTH = 400_000;
+const MAX_SQL_TABLES = 200;
+const MAX_SQL_COLUMNS = 200;
 
 export const CASE_TYPES = Object.freeze(["positive", "negative", "boundary"]);
 export const PRIORITIES = Object.freeze(["P0", "P1", "P2", "P3"]);
@@ -245,38 +248,241 @@ function schemaBoundaries(schema, required) {
   return [...new Set(values.length ? values : ["empty value", "smallest valid value", "unsupported value"] )];
 }
 
+// # Scan SQL safely
+function isSqlWordCharacter(character) {
+  return Boolean(character) && /[A-Za-z0-9_$]/.test(character);
+}
+
+function sqlKeywordAt(source, index, keyword) {
+  const candidate = source.slice(index, index + keyword.length);
+  return (
+    candidate.toUpperCase() === keyword &&
+    !isSqlWordCharacter(source[index - 1]) &&
+    !isSqlWordCharacter(source[index + keyword.length])
+  );
+}
+
+function skipSqlQuotedValue(source, index, quote) {
+  const closingQuote = quote === "[" ? "]" : quote;
+  let cursor = index + 1;
+  while (cursor < source.length) {
+    if (source[cursor] !== closingQuote) {
+      cursor += 1;
+      continue;
+    }
+    if (source[cursor + 1] === closingQuote) {
+      cursor += 2;
+      continue;
+    }
+    return cursor + 1;
+  }
+  return source.length;
+}
+
+function skipSqlTrivia(source, index) {
+  let cursor = index;
+  while (cursor < source.length) {
+    if (/\s/.test(source[cursor])) {
+      cursor += 1;
+      continue;
+    }
+    if (source[cursor] === "-" && source[cursor + 1] === "-") {
+      const newline = source.indexOf("\n", cursor + 2);
+      cursor = newline === -1 ? source.length : newline + 1;
+      continue;
+    }
+    if (source[cursor] === "/" && source[cursor + 1] === "*") {
+      const commentEnd = source.indexOf("*/", cursor + 2);
+      cursor = commentEnd === -1 ? source.length : commentEnd + 2;
+      continue;
+    }
+    break;
+  }
+  return cursor;
+}
+
+function readSqlIdentifier(source, index) {
+  const quote = source[index];
+  if (quote === '"' || quote === "`" || quote === "[") {
+    const end = skipSqlQuotedValue(source, index, quote);
+    if (end >= source.length && source[source.length - 1] !== (quote === "[" ? "]" : quote)) {
+      return null;
+    }
+    const raw = source.slice(index + 1, end - 1);
+    const escapedQuote = `${quote === "[" ? "]" : quote}${quote === "[" ? "]" : quote}`;
+    return {
+      value: raw.replaceAll(escapedQuote, quote === "[" ? "]" : quote),
+      end,
+    };
+  }
+
+  let end = index;
+  while (end < source.length && /[A-Za-z0-9_.-]/.test(source[end])) end += 1;
+  return end === index ? null : { value: source.slice(index, end), end };
+}
+
+function findSqlTableClose(source, openIndex) {
+  let depth = 1;
+  for (let cursor = openIndex + 1; cursor < source.length; cursor += 1) {
+    const character = source[cursor];
+    if (character === "'" || character === '"' || character === "`" || character === "[") {
+      cursor = skipSqlQuotedValue(source, cursor, character) - 1;
+      continue;
+    }
+    if (character === "-" && source[cursor + 1] === "-") {
+      const newline = source.indexOf("\n", cursor + 2);
+      if (newline === -1) return -1;
+      cursor = newline;
+      continue;
+    }
+    if (character === "/" && source[cursor + 1] === "*") {
+      const commentEnd = source.indexOf("*/", cursor + 2);
+      if (commentEnd === -1) return -1;
+      cursor = commentEnd + 1;
+      continue;
+    }
+    if (character === "(") depth += 1;
+    if (character === ")") {
+      depth -= 1;
+      if (depth === 0) return cursor;
+    }
+  }
+  return -1;
+}
+
+function splitSqlColumns(source) {
+  const definitions = [];
+  let start = 0;
+  let depth = 0;
+  for (let cursor = 0; cursor < source.length; cursor += 1) {
+    const character = source[cursor];
+    if (character === "'" || character === '"' || character === "`" || character === "[") {
+      cursor = skipSqlQuotedValue(source, cursor, character) - 1;
+      continue;
+    }
+    if (character === "-" && source[cursor + 1] === "-") {
+      const newline = source.indexOf("\n", cursor + 2);
+      cursor = newline === -1 ? source.length : newline;
+      continue;
+    }
+    if (character === "/" && source[cursor + 1] === "*") {
+      const commentEnd = source.indexOf("*/", cursor + 2);
+      cursor = commentEnd === -1 ? source.length : commentEnd + 1;
+      continue;
+    }
+    if (character === "(") depth += 1;
+    if (character === ")" && depth > 0) depth -= 1;
+    if (character === "," && depth === 0) {
+      definitions.push(source.slice(start, cursor));
+      start = cursor + 1;
+    }
+  }
+  definitions.push(source.slice(start));
+  return definitions;
+}
+
+function findSqlTables(source) {
+  const tables = [];
+  let cursor = 0;
+  while (cursor < source.length) {
+    const character = source[cursor];
+    if (character === "'" || character === '"' || character === "`" || character === "[") {
+      cursor = skipSqlQuotedValue(source, cursor, character);
+      continue;
+    }
+    if (character === "-" && source[cursor + 1] === "-") {
+      cursor = skipSqlTrivia(source, cursor);
+      continue;
+    }
+    if (character === "/" && source[cursor + 1] === "*") {
+      cursor = skipSqlTrivia(source, cursor);
+      continue;
+    }
+    if (!sqlKeywordAt(source, cursor, "CREATE")) {
+      cursor += 1;
+      continue;
+    }
+
+    let statement = skipSqlTrivia(source, cursor + 6);
+    if (!sqlKeywordAt(source, statement, "TABLE")) {
+      cursor += 6;
+      continue;
+    }
+    statement = skipSqlTrivia(source, statement + 5);
+    if (sqlKeywordAt(source, statement, "IF")) {
+      statement = skipSqlTrivia(source, statement + 2);
+      if (!sqlKeywordAt(source, statement, "NOT")) {
+        cursor += 6;
+        continue;
+      }
+      statement = skipSqlTrivia(source, statement + 3);
+      if (!sqlKeywordAt(source, statement, "EXISTS")) {
+        cursor += 6;
+        continue;
+      }
+      statement = skipSqlTrivia(source, statement + 6);
+    }
+
+    const identifier = readSqlIdentifier(source, statement);
+    if (!identifier) {
+      cursor += 6;
+      continue;
+    }
+    statement = skipSqlTrivia(source, identifier.end);
+    if (source[statement] !== "(") {
+      cursor = identifier.end;
+      continue;
+    }
+    const close = findSqlTableClose(source, statement);
+    if (close === -1) {
+      throw new TypeError("SQL schema contains an unclosed CREATE TABLE definition.");
+    }
+    tables.push({ name: identifier.value, columns: source.slice(statement + 1, close) });
+    if (tables.length > MAX_SQL_TABLES) {
+      throw new TypeError(`SQL schema exceeds the ${MAX_SQL_TABLES}-table limit.`);
+    }
+    cursor = close + 1;
+  }
+  return tables;
+}
+
 // # Parse data schemas
 function parseSchemaSource(input) {
-  if (typeof input === "string" && /\bCREATE\s+TABLE\b/i.test(input)) {
-    const requirements = [];
-    for (const tableMatch of input.matchAll(/CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?["`]?([\w.-]+)["`]?\s*\(([\s\S]*?)\)\s*;?/gi)) {
-      const [, tableName, columnsText] = tableMatch;
-      columnsText.split(/,\s*(?=["`]?\w+["`]?\s+[A-Za-z])/).forEach((definition) => {
-        const column = definition.trim().match(/^["`]?([A-Za-z_]\w*)["`]?\s+([A-Za-z]+(?:\s*\([^)]*\))?)([\s\S]*)$/);
-        if (!column || /^(PRIMARY|FOREIGN|UNIQUE|CHECK|CONSTRAINT)$/i.test(column[1])) return;
-        const [, columnName, dataType, constraints] = column;
-        const required = /\bNOT\s+NULL\b/i.test(constraints);
-        requirements.push(
-          normalizeRequirement(
-            {
-              id: `SCHEMA-${tableName}-${columnName}`,
-              title: `${tableName}.${columnName} column contract`,
-              text: `Column ${tableName}.${columnName} must conform to its declared database constraints.`,
-              acceptanceCriteria: [
-                `${columnName} constraints: type ${cleanText(dataType)}${required ? "; required" : ""}${constraints.trim() ? `; ${cleanText(constraints)}` : ""}`,
-              ],
-              boundaryValues: required
-                ? ["null value", "smallest valid value", "largest supported value"]
-                : ["omitted optional value", "null value", "largest supported value"],
-              sourceType: "schema",
-              testLevel: "integration",
-            },
-            requirements.length + 1,
-          ),
-        );
-      });
+  if (typeof input === "string" && !input.trimStart().startsWith("{")) {
+    const tables = findSqlTables(input);
+    if (tables.length > 0) {
+      const requirements = [];
+      for (const { name: tableName, columns: columnsText } of tables) {
+        splitSqlColumns(columnsText).forEach((definition) => {
+          const column = definition.trim().match(/^["`]?([A-Za-z_]\w*)["`]?\s+([A-Za-z]+(?:\s*\([^)]*\))?)([\s\S]*)$/);
+          if (!column || /^(PRIMARY|FOREIGN|UNIQUE|CHECK|CONSTRAINT)$/i.test(column[1])) return;
+          const [, columnName, dataType, constraints] = column;
+          const required = /\bNOT\s+NULL\b/i.test(constraints);
+          requirements.push(
+            normalizeRequirement(
+              {
+                id: `SCHEMA-${tableName}-${columnName}`,
+                title: `${tableName}.${columnName} column contract`,
+                text: `Column ${tableName}.${columnName} must conform to its declared database constraints.`,
+                acceptanceCriteria: [
+                  `${columnName} constraints: type ${cleanText(dataType)}${required ? "; required" : ""}${constraints.trim() ? `; ${cleanText(constraints)}` : ""}`,
+                ],
+                boundaryValues: required
+                  ? ["null value", "smallest valid value", "largest supported value"]
+                  : ["omitted optional value", "null value", "largest supported value"],
+                sourceType: "schema",
+                testLevel: "integration",
+              },
+              requirements.length + 1,
+            ),
+          );
+          if (requirements.length > MAX_SQL_COLUMNS) {
+            throw new TypeError(`SQL schema exceeds the ${MAX_SQL_COLUMNS}-column limit.`);
+          }
+        });
+      }
+      return requirements;
     }
-    return requirements;
   }
 
   const schema = parseJsonSource(input, "Schema");
@@ -300,6 +506,9 @@ function parseSchemaSource(input) {
 // # Route source parsing
 export function parseSource(input, sourceType = "requirements") {
   if (!SOURCE_TYPES.includes(sourceType)) throw new TypeError(`Unsupported source type: ${sourceType}.`);
+  if (typeof input === "string" && input.length > MAX_SOURCE_LENGTH) {
+    throw new TypeError(`Source text exceeds the ${MAX_SOURCE_LENGTH.toLocaleString("en-US")}-character limit.`);
+  }
   if (sourceType === "function") return parseFunctionSource(input);
   if (sourceType === "api") return parseApiSource(input);
   if (sourceType === "schema") return parseSchemaSource(input);
@@ -564,7 +773,7 @@ export function generateTestCases(input, options = {}) {
 
 function protectSpreadsheetFormula(value) {
   const text = String(value ?? "");
-  return /^[=+\-@]/.test(text) ? `'${text}` : text;
+  return /^[\u0000-\u0020\u007f]*[=+\-@]/.test(text) ? `'${text}` : text;
 }
 
 function csvCell(value) {

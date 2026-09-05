@@ -1,7 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
 import {
   AddressBook,
+  PersonSimpleCircle,
   ArrowRight,
+  ArrowLeft,
   Bell,
   CalendarBlank,
   CaretDown,
@@ -16,6 +18,7 @@ import {
   GlobeHemisphereWest,
   GridFour,
   ImageSquare,
+  Hammer,
   MagnifyingGlass,
   NotePencil,
   Package,
@@ -27,6 +30,8 @@ import {
   Sparkle,
   SpinnerGap,
   Storefront,
+  TestTube,
+  TreeStructure,
   Tray,
   Users,
   Wrench,
@@ -56,6 +61,7 @@ import {
   auditTool,
   mergeToolEntitlements,
 } from "./tool-registry.js";
+import ToolWorkspaceErrorBoundary from "./components/tool-workspace-error-boundary.js";
 
 // # Preview records
 const PREVIEW_CONTACTS = [];
@@ -70,6 +76,11 @@ const TOOL_ICONS = {
   payments: CurrencyDollar,
   "media-kit": ImageSquare,
   analytics: ChartLineUp,
+  "search-visibility": MagnifyingGlass,
+  "accessibility-auditor": PersonSimpleCircle,
+  "diagnostic-flow": TreeStructure,
+  "project-material-planner": Hammer,
+  "code-quality-desk": TestTube,
 };
 const TOOL_ACCENTS = {
   "crm-core": "blue",
@@ -80,12 +91,34 @@ const TOOL_ACCENTS = {
   payments: "green",
   "media-kit": "pink",
   analytics: "slate",
+  "search-visibility": "violet",
+  "accessibility-auditor": "teal",
+  "diagnostic-flow": "orange",
+  "project-material-planner": "green",
+  "code-quality-desk": "indigo",
 };
 const NAV_ITEMS = [
   { id: "my-tools", label: "My Tools", icon: GridFour },
-  { id: "crm", label: "Leads & CRM", icon: AddressBook, toolKey: "crm-core" },
   { id: "library", label: "Tool Library", icon: Package },
 ];
+
+// # Runnable workspaces
+const AccessibilityAuditor = lazy(() => import("./tools/accessibility-auditor/index.js"));
+const DecisionTreeBuilder = lazy(() => import("./tools/diagnostic-decision-tree/builder.jsx"));
+const DiagnosticDecisionTreeWorkspace = lazy(() => import("./tools/diagnostic-decision-tree/index.jsx"));
+const ProjectMaterialPlanner = lazy(() => import("./tools/project-material-planner/index.jsx"));
+const QuoteInvoiceBuilder = lazy(() => import("./tools/quote-invoice-builder/index.jsx"));
+const SeoAeoAnalyzer = lazy(() => import("./tools/seo-aeo-analyzer/index.jsx"));
+const TestCaseGenerator = lazy(() => import("./tools/test-case-generator/index.js"));
+
+const TOOL_COMPONENTS = Object.freeze({
+  "search-visibility": SeoAeoAnalyzer,
+  "accessibility-auditor": AccessibilityAuditor,
+  "quote-invoice-builder": QuoteInvoiceBuilder,
+  "diagnostic-flow": DiagnosticFlowTool,
+  "project-material-planner": ProjectMaterialPlanner,
+  "code-quality-desk": TestCaseGenerator,
+});
 const EMPTY_LEAD = {
   displayName: "",
   companyName: "",
@@ -115,6 +148,83 @@ function formatDate(value) {
         minute: "2-digit",
       }).format(new Date(value))
     : "Just now";
+}
+
+// # Diagnostic authoring
+function DiagnosticFlowTool() {
+  const [tree, setTree] = useState(null);
+  const [mode, setMode] = useState("author");
+
+  function saveTree(nextTree) {
+    setTree(nextTree);
+    setMode("run");
+  }
+
+  if (mode === "author") {
+    return (
+      <DecisionTreeBuilder
+        initialTree={tree}
+        onSave={saveTree}
+        onCancel={tree ? () => setMode("run") : undefined}
+      />
+    );
+  }
+
+  return (
+    <div className="diagnostic-session">
+      <button className="secondary-button" type="button" onClick={() => setMode("author")}>
+        <NotePencil /> Edit workflow
+      </button>
+      <DiagnosticDecisionTreeWorkspace tree={tree} />
+    </div>
+  );
+}
+
+// # Shared tool frame
+function ToolWorkspace({ tool, onBack }) {
+  const Component = TOOL_COMPONENTS[tool.workspaceId];
+  return (
+    <div className="tool-workspace-page">
+      <header className="tool-workspace-bar">
+        <button className="text-button" type="button" onClick={onBack}>
+          <ArrowLeft /> Tool Library
+        </button>
+        <div>
+          <strong>{tool.name}</strong>
+          <span className="status-pill foundation">
+            <Wrench /> Beta · session only
+          </span>
+        </div>
+      </header>
+      <p className="tool-workspace-notice" role="note">
+        This foundation runs in your current session. Saving to your workspace and
+        connected services are not available yet.
+      </p>
+      {Component ? (
+        <ToolWorkspaceErrorBoundary
+          onBack={onBack}
+          resetKey={tool.workspaceId}
+          toolName={tool.name}
+        >
+          <Suspense
+            fallback={
+              <section className="tool-loading" role="status">
+                <SpinnerGap className="spin" /> Loading tool workspace…
+              </section>
+            }
+          >
+            <Component />
+          </Suspense>
+        </ToolWorkspaceErrorBoundary>
+      ) : (
+        <section className="empty-state" role="alert">
+          <Wrench />
+          <h1>Workspace unavailable</h1>
+          <p>The registered component could not be loaded.</p>
+        </section>
+      )}
+    </div>
+  );
 }
 
 // # Connection screens
@@ -447,7 +557,8 @@ function MyTools({ contacts, tools, onNavigate, onCreateLead }) {
   const newLeads = contacts.filter(
     (contact) => contact.stage === "New lead",
   ).length;
-  const activeCount = tools.filter(
+  const runnableTools = tools.filter((tool) => tool.runnable);
+  const workingCount = runnableTools.filter(
     (tool) => tool.enabled && tool.maturity === TOOL_MATURITY.implemented,
   ).length;
   return (
@@ -488,9 +599,9 @@ function MyTools({ contacts, tools, onNavigate, onCreateLead }) {
             <CheckCircle />
           </span>
           <div>
-            <small>Working tools</small>
-            <strong>{activeCount}</strong>
-            <span>{tools.length - activeCount} in foundation or planning</span>
+            <small>Runnable tools</small>
+            <strong>{runnableTools.length}</strong>
+            <span>{workingCount} working · {runnableTools.length - workingCount} beta</span>
           </div>
         </article>
       </section>
@@ -499,45 +610,45 @@ function MyTools({ contacts, tools, onNavigate, onCreateLead }) {
           <div>
             <h2>Active tools</h2>
             <p>
-              Only implemented and enabled tools appear in workspace navigation.
+              Working and runnable beta tools appear here with verified status.
             </p>
           </div>
           <button className="text-button" onClick={() => onNavigate("library")}>
             Audit Tool Library <ArrowRight />
           </button>
         </div>
-        <article className="active-tool-card">
-          <div className="tool-mark blue">
-            <AddressBook weight="duotone" />
-          </div>
-          <div className="tool-copy">
-            <span className="status-pill active">
-              <Check /> Working
-            </span>
-            <h3>Lead Intake & CRM</h3>
-            <p>
-              Capture leads, organize contact details, update lifecycle stages,
-              add notes, and see customer activity in one timeline.
-            </p>
-            <div className="feature-row">
-              <span>
-                <CheckCircle /> Lead capture
-              </span>
-              <span>
-                <CheckCircle /> Contact directory
-              </span>
-              <span>
-                <CheckCircle /> Unified timeline
-              </span>
-            </div>
-          </div>
-          <button
-            className="secondary-button"
-            onClick={() => onNavigate("crm")}
-          >
-            Open CRM <ArrowRight />
-          </button>
-        </article>
+        <div className="active-tool-list">
+          {runnableTools.map((tool) => {
+            const Icon = tool.icon;
+            const working = tool.maturity === TOOL_MATURITY.implemented;
+            return (
+              <article className="active-tool-card" key={tool.key}>
+                <div className={`tool-mark ${tool.accent}`}>
+                  <Icon weight="duotone" />
+                </div>
+                <div className="tool-copy">
+                  <span className={`status-pill ${working ? "active" : "foundation"}`}>
+                    {working ? <Check /> : <Wrench />}
+                    {working ? "Working" : "Beta · session only"}
+                  </span>
+                  <h3>{tool.name}</h3>
+                  <p>{tool.description}</p>
+                  <div className="feature-row">
+                    {tool.implemented.slice(0, 3).map((item) => (
+                      <span key={item}><CheckCircle /> {item}</span>
+                    ))}
+                  </div>
+                </div>
+                <button
+                  className="secondary-button"
+                  onClick={() => onNavigate(tool.workspaceId)}
+                >
+                  Open {working ? "tool" : "beta"} <ArrowRight />
+                </button>
+              </article>
+            );
+          })}
+        </div>
       </section>
       <section className="section-block next-up">
         <div>
@@ -623,6 +734,7 @@ function ToolLibrary({ tools, onOpenTool }) {
           const presentation = MATURITY_PRESENTATION[tool.maturity];
           const working =
             tool.maturity === TOOL_MATURITY.implemented && tool.enabled;
+          const runnable = Boolean(tool.runnable);
           return (
             <article className="tool-card" key={tool.key}>
               <div className="tool-card-top">
@@ -633,7 +745,11 @@ function ToolLibrary({ tools, onOpenTool }) {
                   className={`status-pill ${working ? "active" : presentation.tone}`}
                 >
                   {working ? <Check /> : <Wrench />}
-                  {working ? "Working" : presentation.label}
+                  {working
+                    ? "Working"
+                    : runnable
+                      ? "Beta · session only"
+                      : presentation.label}
                 </span>
               </div>
               <span className="tool-category">{tool.category}</span>
@@ -644,13 +760,13 @@ function ToolLibrary({ tools, onOpenTool }) {
                 <button
                   className="secondary-button"
                   onClick={() =>
-                    working
-                      ? onOpenTool(tool.key)
+                    runnable
+                      ? onOpenTool(tool)
                       : (setAuditMessage(""), setSelectedTool(tool))
                   }
                 >
-                  {working ? "Open tool" : presentation.action}
-                  {working && <ArrowRight />}
+                  {working ? "Open tool" : runnable ? "Open beta" : presentation.action}
+                  {runnable && <ArrowRight />}
                 </button>
               </footer>
             </article>
@@ -1011,6 +1127,8 @@ export function App() {
       (tool) => tool.enabled && tool.maturity === TOOL_MATURITY.implemented,
     )
     .map((tool) => tool.key);
+  const runnableTools = tools.filter((tool) => tool.runnable);
+  const activeTool = tools.find((tool) => tool.workspaceId === activePage);
   const announce = (message) => {
     setToast(message);
     window.setTimeout(() => setToast(""), 2800);
@@ -1363,15 +1481,23 @@ export function App() {
           ))}
         </nav>
         <div className="sidebar-tools">
-          <span className="sidebar-label">Active tools</span>
-          <button
-            className={activePage === "crm" ? "active" : ""}
-            onClick={() => navigate("crm")}
-          >
-            <AddressBook />
-            <span>Lead Intake & CRM</span>
-            <CheckCircle weight="fill" />
-          </button>
+          <span className="sidebar-label">Runnable tools</span>
+          {runnableTools.map((tool) => {
+            const Icon = tool.icon;
+            const working = tool.maturity === TOOL_MATURITY.implemented;
+            return (
+              <button
+                key={tool.key}
+                className={activePage === tool.workspaceId ? "active" : ""}
+                onClick={() => navigate(tool.workspaceId)}
+                title={working ? "Working" : "Beta · session only"}
+              >
+                <Icon />
+                <span>{tool.name}</span>
+                {working ? <CheckCircle weight="fill" /> : <Wrench />}
+              </button>
+            );
+          })}
         </div>
         <button
           className="library-shortcut"
@@ -1386,7 +1512,7 @@ export function App() {
         <div className="plan-card">
           <span>Foundation plan</span>
           <strong>
-            {enabledKeys.length} of {tools.length} tools working
+            {enabledKeys.length} working · {runnableTools.length - enabledKeys.length} beta
           </strong>
           <div>
             <i />
@@ -1424,7 +1550,7 @@ export function App() {
         {activePage === "library" && (
           <ToolLibrary
             tools={tools}
-            onOpenTool={(key) => key === "crm-core" && navigate("crm")}
+            onOpenTool={(tool) => navigate(tool.workspaceId)}
           />
         )}
         {activePage === "crm" && (
@@ -1439,6 +1565,9 @@ export function App() {
             onArchive={requestArchive}
             onAddNote={addNote}
           />
+        )}
+        {activeTool && activePage !== "crm" && (
+          <ToolWorkspace tool={activeTool} onBack={() => navigate("library")} />
         )}
       </section>
       {mobileNavOpen && (

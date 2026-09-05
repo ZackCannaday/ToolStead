@@ -108,7 +108,12 @@ export default function TestCaseGenerator() {
           <textarea
             id="tcg-requirements"
             value={requirements}
-            onChange={(event) => setRequirements(event.target.value)}
+            onChange={(event) => {
+              setRequirements(event.target.value);
+              setTestCases([]);
+              setIssues({ errors: [], warnings: [] });
+              setExpandedId(null);
+            }}
             rows="15"
             maxLength="400000"
             placeholder={`Paste ${sourceType === "requirements" ? "requirements" : sourceType === "function" ? "function source code" : sourceType === "api" ? "an API specification" : "a JSON or SQL schema"} here`}

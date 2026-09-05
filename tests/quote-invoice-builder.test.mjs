@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import {
   QuoteValidationError,
@@ -8,6 +9,7 @@ import {
   parseMoneyToCents,
   parsePercentToBasisPoints,
   parseQuantity,
+  printPreparedDocument,
   validateCalculationInput,
   validateQuoteDraft,
 } from "../src/tools/quote-invoice-builder/logic.js";
@@ -181,6 +183,99 @@ test("supports proposals with an explicit expiration date", () => {
 
   assert.equal(result.kind, "proposal");
   assert.equal(result.deadline, "2026-10-04");
+});
+
+test("rejects an unknown document kind instead of creating a contradictory deadline", () => {
+  const draft = {
+    kind: "bogus",
+    documentNumber: "DOC-12",
+    issueDate: "2026-09-04",
+    expiresOn: "2026-10-04",
+    dueDate: "2026-09-10",
+    business: { name: "Example Services" },
+    client: { name: "Client Name" },
+    items: [{ description: "Project phase", quantity: "1", unitPrice: "500.00" }],
+    taxRate: "0",
+  };
+
+  const validation = validateQuoteDraft(draft);
+  assert.equal(validation.valid, false);
+  assert.deepEqual(validation.errors.map((error) => error.path), ["kind"]);
+  assert.throws(
+    () => createDocumentResult(draft),
+    (error) => error instanceof QuoteValidationError && error.errors[0].path === "kind",
+  );
+});
+
+test("uses expiration only for quote-like documents and due date only for billing documents", () => {
+  const baseDraft = {
+    documentNumber: "DOC-13",
+    issueDate: "2026-09-04",
+    expiresOn: "2026-10-04",
+    dueDate: "2026-09-19",
+    business: { name: "Example Services" },
+    client: { name: "Client Name" },
+    items: [{ description: "Project phase", quantity: "1", unitPrice: "500.00" }],
+    taxRate: "0",
+  };
+
+  for (const kind of ["quote", "proposal"]) {
+    const result = createDocumentResult({ ...baseDraft, kind });
+    assert.equal(result.deadline, baseDraft.expiresOn);
+  }
+  for (const kind of ["invoice", "change_order"]) {
+    const result = createDocumentResult({ ...baseDraft, kind });
+    assert.equal(result.deadline, baseDraft.dueDate);
+  }
+});
+
+test("runs a supplied local print action only for a prepared document", () => {
+  const result = createDocumentResult({
+    kind: "invoice",
+    documentNumber: "INV-205",
+    issueDate: "2026-09-04",
+    dueDate: "2026-09-19",
+    business: { name: "Example Services" },
+    client: { name: "Client Name" },
+    items: [{ description: "Diagnostic service", quantity: "1", unitPrice: "125.00" }],
+    taxRate: "0",
+  });
+  let printCalls = 0;
+
+  assert.equal(printPreparedDocument(result, () => { printCalls += 1; }), result);
+  assert.equal(printCalls, 1);
+  assert.throws(() => printPreparedDocument(null, () => {}), TypeError);
+  assert.throws(() => printPreparedDocument(result), TypeError);
+});
+
+test("workspace exposes the complete authoring, preview, and local export flow", () => {
+  const workspace = readFileSync(
+    new URL("../src/tools/quote-invoice-builder/index.jsx", import.meta.url),
+    "utf8",
+  );
+
+  for (const requiredLabel of [
+    "Business name",
+    "Business contact",
+    "Client name",
+    "Service address",
+    "Itemized scope",
+    "Included in total",
+    "Optional — not included",
+    "Discount / credit",
+    "Tax rate (%)",
+    "Processing fee",
+    "Deposit",
+    "Balance due",
+    "Payment terms and methods",
+    "Scope notes",
+    "Print / save PDF locally",
+  ]) {
+    assert.match(workspace, new RegExp(requiredLabel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  }
+
+  assert.match(workspace, /printPreparedDocument\(preparedResult, \(\) => window\.print\(\)\)/);
+  assert.doesNotMatch(workspace, /future save|saved automatically|stored in your account/i);
 });
 
 test("formats integer cents as USD and rejects fractional cents", () => {

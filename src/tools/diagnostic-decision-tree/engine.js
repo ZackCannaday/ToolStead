@@ -1,21 +1,5 @@
 // # Public tool contract
-export const TOOL_MANIFEST = Object.freeze({
-  key: "diagnostic-decision-tree",
-  name: "Diagnostic Decision Tree",
-  description:
-    "Run a configured question path with traceable answers and a clear terminal outcome.",
-  category: "Operations",
-  version: "1.0.0",
-  maturity: "implemented",
-  capabilities: Object.freeze([
-    "In-workspace workflow authoring",
-    "Validated configurable workflows",
-    "Traceable answer history",
-    "Back and restart controls",
-    "Cycle and invalid-path protection",
-    "Explicit safety notices",
-  ]),
-});
+export { TOOL_MANIFEST } from "./manifest.js";
 
 export const DEFAULT_SAFETY_NOTICES = Object.freeze([
   "Stop the workflow if the situation presents an immediate risk to people, property, or equipment.",
@@ -45,7 +29,8 @@ function isText(value, maxLength = 500) {
 }
 
 function validateOptionalText(value, path, errors, maxLength = 2_000) {
-  if (value !== undefined && !isText(value, maxLength)) {
+  if (value === undefined || value === null || value === "") return;
+  if (!isText(value, maxLength)) {
     errors.push(
       issue("INVALID_TEXT", path, `Must be non-empty text up to ${maxLength} characters.`),
     );

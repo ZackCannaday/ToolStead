@@ -257,47 +257,64 @@ test("Supabase migration defines auth mapping, RLS, and RPC boundaries", async (
 });
 
 test("tool catalog never claims unfinished tools are available", () => {
-  const tools = mergeToolEntitlements([]);
-  assert.equal(tools.length, 8);
-  assert.deepEqual(
-    tools
-      .filter((tool) => tool.maturity === TOOL_MATURITY.implemented)
-      .map((tool) => tool.key),
-    ["crm-core"],
+  const catalog = mergeToolEntitlements([]);
+  const tools = mergeToolEntitlements(
+    catalog.map((tool) => ({ key: tool.key, enabled: true })),
   );
+
+  assert.ok(tools.length > 0, "catalog contains audited tools");
   for (const tool of tools) {
     const audit = auditTool(tool);
     assert.ok(audit.total > 0);
-    assert.equal(audit.activatable, tool.key === "crm-core");
+    assert.equal(
+      audit.activatable,
+      tool.maturity === TOOL_MATURITY.implemented && tool.enabled,
+      `${tool.key} activation matches its audited maturity`,
+    );
+    if (tool.maturity !== TOOL_MATURITY.implemented) {
+      assert.equal(
+        audit.activatable,
+        false,
+        `${tool.key} cannot activate while unfinished`,
+      );
+    }
   }
 });
 
-test("all eight catalog tools have explicit audited readiness evidence", () => {
+test("every catalog tool has explicit audited readiness evidence", () => {
   const tools = mergeToolEntitlements([]);
-  const expected = new Map([
-    ["crm-core", TOOL_MATURITY.implemented],
-    ["booking", TOOL_MATURITY.foundation],
-    ["messaging", TOOL_MATURITY.foundation],
-    ["site-builder", TOOL_MATURITY.notStarted],
-    ["smart-intake", TOOL_MATURITY.notStarted],
-    ["payments", TOOL_MATURITY.notStarted],
-    ["media-kit", TOOL_MATURITY.notStarted],
-    ["analytics", TOOL_MATURITY.notStarted],
-  ]);
+  const validMaturities = new Set(Object.values(TOOL_MATURITY));
+  const uniqueKeys = new Set(tools.map((tool) => tool.key));
 
-  assert.equal(tools.length, expected.size);
+  assert.ok(tools.length > 0, "catalog contains tools");
+  assert.equal(uniqueKeys.size, tools.length, "catalog keys are unique");
   for (const tool of tools) {
-    assert.equal(tool.maturity, expected.get(tool.key), tool.key);
+    const audit = auditTool(tool);
+
+    assert.ok(validMaturities.has(tool.maturity), `${tool.key} has a maturity`);
     assert.ok(tool.implemented.length > 0, `${tool.key} has evidence`);
     assert.ok(
-      tool.missing.length > 0,
-      `${tool.key} has remaining-work evidence`,
+      tool.implemented.every((item) => typeof item === "string" && item.trim()),
+      `${tool.key} implementation evidence is explicit`,
     );
+    assert.equal(audit.implemented, tool.implemented.length, tool.key);
+    assert.equal(audit.missing, tool.missing.length, tool.key);
     assert.equal(
-      tool.enabled && tool.maturity !== TOOL_MATURITY.implemented,
-      false,
-      `${tool.key} cannot activate before implementation`,
+      audit.total,
+      tool.implemented.length + tool.missing.length,
+      tool.key,
     );
+    if (tool.maturity !== TOOL_MATURITY.implemented) {
+      assert.ok(
+        tool.missing.length > 0,
+        `${tool.key} has remaining-work evidence`,
+      );
+      assert.ok(
+        tool.missing.every((item) => typeof item === "string" && item.trim()),
+        `${tool.key} remaining-work evidence is explicit`,
+      );
+      assert.equal(audit.activatable, false, `${tool.key} is not activatable`);
+    }
   }
 });
 

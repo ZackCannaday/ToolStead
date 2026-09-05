@@ -1,6 +1,8 @@
 // # Audit contract
-export const AUDIT_VERSION = "1.0.0";
+export const AUDIT_VERSION = "1.1.0";
 export const MAX_HTML_LENGTH = 500_000;
+export const MAX_ELEMENTS = 20_000;
+export const MAX_FINDINGS = 2_000;
 
 export const SEVERITY_WEIGHTS = Object.freeze({
   critical: 20,
@@ -158,6 +160,18 @@ const VALID_ROLES = new Set([
   "treeitem",
 ]);
 
+const REQUIRED_ROLE_ATTRIBUTES = Object.freeze({
+  checkbox: ["aria-checked"],
+  combobox: ["aria-expanded"],
+  heading: ["aria-level"],
+  menuitemcheckbox: ["aria-checked"],
+  menuitemradio: ["aria-checked"],
+  radio: ["aria-checked"],
+  slider: ["aria-valuenow"],
+  spinbutton: ["aria-valuenow"],
+  switch: ["aria-checked"],
+});
+
 const RULES = Object.freeze({
   "html-lang": {
     category: "Understandable",
@@ -177,6 +191,13 @@ const RULES = Object.freeze({
     category: "Operable",
     criterion: "Bypass Blocks",
     wcag: "2.4.1",
+    level: "A",
+    severity: "moderate",
+  },
+  "landmark-name": {
+    category: "Perceivable",
+    criterion: "Info and Relationships",
+    wcag: "1.3.1",
     level: "A",
     severity: "moderate",
   },
@@ -250,6 +271,13 @@ const RULES = Object.freeze({
     level: "A",
     severity: "critical",
   },
+  "focus-indicator": {
+    category: "Operable",
+    criterion: "Focus Visible",
+    wcag: "2.4.7",
+    level: "AA",
+    severity: "serious",
+  },
   "invalid-role": {
     category: "Robust",
     criterion: "Name, Role, Value",
@@ -258,6 +286,13 @@ const RULES = Object.freeze({
     severity: "serious",
   },
   "aria-reference": {
+    category: "Robust",
+    criterion: "Name, Role, Value",
+    wcag: "4.1.2",
+    level: "A",
+    severity: "serious",
+  },
+  "aria-required-state": {
     category: "Robust",
     criterion: "Name, Role, Value",
     wcag: "4.1.2",
@@ -405,6 +440,12 @@ export function parseHtml(source) {
       text: "",
     };
     parent.children.push(node);
+    if (nodes.length >= MAX_ELEMENTS) {
+      throw new AuditInputError(
+        "ELEMENT_LIMIT_EXCEEDED",
+        `HTML input must contain ${MAX_ELEMENTS.toLocaleString("en-US")} elements or fewer.`,
+      );
+    }
     nodes.push(node);
     index = token.end;
 
@@ -503,18 +544,37 @@ function isIntrinsicallyFocusable(node) {
   return hasAttribute(node, "contenteditable");
 }
 
-function selectorFor(node) {
+function buildSelectorIndex(nodes) {
+  const positions = new WeakMap();
+  const totalsByParent = new WeakMap();
+
+  for (const node of nodes) {
+    const parent = node.parent;
+    let totals = totalsByParent.get(parent);
+    if (!totals) {
+      totals = new Map();
+      totalsByParent.set(parent, totals);
+    }
+    const position = (totals.get(node.tag) || 0) + 1;
+    totals.set(node.tag, position);
+    positions.set(node, position);
+  }
+
+  return { positions, totalsByParent };
+}
+
+function selectorFor(node, selectorIndex) {
   if (!node || node.tag === "#document") return "document";
   if (attribute(node, "id")) return `${node.tag}#${attribute(node, "id")}`;
   const parts = [];
   let current = node;
   while (current && current.tag !== "#document" && parts.length < 4) {
-    const siblings = current.parent?.children.filter(
-      (sibling) => sibling.tag === current.tag,
-    );
+    const siblingTotal = selectorIndex.totalsByParent
+      .get(current.parent)
+      ?.get(current.tag) || 0;
     const suffix =
-      siblings?.length > 1
-        ? `:nth-of-type(${siblings.indexOf(current) + 1})`
+      siblingTotal > 1
+        ? `:nth-of-type(${selectorIndex.positions.get(current)})`
         : "";
     parts.unshift(`${current.tag}${suffix}`);
     current = current.parent;
@@ -628,6 +688,50 @@ function inlineStyle(node) {
   return declarations;
 }
 
+function explicitAccessibleName(node, idMap) {
+  const direct = attribute(node, "aria-label")?.trim();
+  if (direct) return direct;
+  const references = attribute(node, "aria-labelledby")
+    ?.trim()
+    .split(/\s+/)
+    .filter(Boolean) || [];
+  return references
+    .map((id) => getText(idMap.get(id)?.[0]))
+    .join(" ")
+    .trim();
+}
+
+function suppressedFocusRules(css) {
+  const findings = [];
+  const source = String(css || "").replace(/\/\*[\s\S]*?\*\//g, "");
+  const pattern = /([^{}]+)\{([^{}]*)\}/g;
+  let match;
+  while ((match = pattern.exec(source))) {
+    const selector = match[1].trim();
+    if (!/:focus(?:-visible)?\b/i.test(selector)) continue;
+    const declarations = inlineStyle({ attrs: { style: match[2] } });
+    const outline = declarations.outline?.toLowerCase();
+    const outlineWidth = declarations["outline-width"]?.toLowerCase();
+    const removesOutline =
+      outline === "none" ||
+      /^(?:0|0px)(?:\s|$)/.test(outline || "") ||
+      /^(?:0|0px)$/.test(outlineWidth || "");
+    if (!removesOutline) continue;
+
+    const alternateIndicator =
+      (declarations["box-shadow"] && declarations["box-shadow"].toLowerCase() !== "none") ||
+      (declarations.border && !/^(?:0|none)(?:\s|$)/i.test(declarations.border)) ||
+      declarations["border-color"] ||
+      declarations.background ||
+      declarations["background-color"] ||
+      declarations["text-decoration"];
+    if (!alternateIndicator) {
+      findings.push(`${selector} { ${match[2].trim()} }`);
+    }
+  }
+  return findings;
+}
+
 // # Deterministic audit
 export function analyzeAccessibility(html) {
   if (typeof html !== "string") {
@@ -647,6 +751,7 @@ export function analyzeAccessibility(html) {
       conformance: "NOT_ASSESSED",
       summary: { total: 0, critical: 0, serious: 0, moderate: 0, minor: 0 },
       findings: [],
+      findingsTruncated: false,
       passedChecks: [],
       manualChecks: MANUAL_CHECKS,
       analyzedElements: 0,
@@ -654,6 +759,7 @@ export function analyzeAccessibility(html) {
   }
 
   const { nodes } = parseHtml(html);
+  const selectorIndex = buildSelectorIndex(nodes);
   const lineStarts = [0];
   for (let index = 0; index < html.length; index += 1) {
     if (html[index] === "\n") lineStarts.push(index + 1);
@@ -680,10 +786,15 @@ export function analyzeAccessibility(html) {
   }
 
   const findings = [];
+  let findingsTruncated = false;
   const checkedRules = new Set();
   const add = (ruleId, node, message, evidence, remediation, severity) => {
     const rule = RULES[ruleId];
     checkedRules.add(ruleId);
+    if (findings.length >= MAX_FINDINGS) {
+      findingsTruncated = true;
+      return;
+    }
     const location = locate(node?.offset || 0);
     findings.push({
       id: "",
@@ -694,7 +805,7 @@ export function analyzeAccessibility(html) {
       level: rule.level,
       severity: severity || rule.severity,
       message,
-      selector: selectorFor(node),
+      selector: selectorFor(node, selectorIndex),
       line: location.line,
       column: location.column,
       evidence: String(evidence || node?.raw || "").slice(0, 240),
@@ -731,7 +842,9 @@ export function analyzeAccessibility(html) {
     }
     checkedRules.add("main-landmark");
     const mains = nodes.filter(
-      (node) => node.tag === "main" || attribute(node, "role") === "main",
+      (node) =>
+        !isHidden(node) &&
+        (node.tag === "main" || attribute(node, "role") === "main"),
     );
     if (mains.length !== 1) {
       add(
@@ -758,6 +871,48 @@ export function analyzeAccessibility(html) {
         viewport.raw,
         "Remove user-scalable=no and restrictive maximum-scale values.",
       );
+    }
+  }
+
+  const namedLandmarkTypes = new Map([
+    ["nav", "navigation"],
+    ["aside", "complementary"],
+  ]);
+  for (const [element, landmarkRole] of namedLandmarkTypes) {
+    const landmarks = nodes.filter(
+      (node) =>
+        !isHidden(node) &&
+        (node.tag === element || attribute(node, "role")?.toLowerCase() === landmarkRole),
+    );
+    if (landmarks.length > 1) {
+      checkedRules.add("landmark-name");
+      const nameCounts = new Map();
+      for (const landmark of landmarks) {
+        const normalizedName = explicitAccessibleName(landmark, idMap).toLowerCase();
+        if (normalizedName) {
+          nameCounts.set(normalizedName, (nameCounts.get(normalizedName) || 0) + 1);
+        }
+      }
+      for (const landmark of landmarks) {
+        const landmarkName = explicitAccessibleName(landmark, idMap);
+        if (!landmarkName) {
+          add(
+            "landmark-name",
+            landmark,
+            `Multiple ${landmarkRole} landmarks need unique accessible names.`,
+            landmark.raw,
+            `Add a concise, unique aria-label or aria-labelledby value to each ${landmarkRole} landmark.`,
+          );
+        } else if (nameCounts.get(landmarkName.toLowerCase()) > 1) {
+          add(
+            "landmark-name",
+            landmark,
+            `Multiple ${landmarkRole} landmarks share the accessible name "${landmarkName}".`,
+            landmark.raw,
+            `Give each ${landmarkRole} landmark a distinct aria-label or aria-labelledby value.`,
+          );
+        }
+      }
     }
   }
 
@@ -887,17 +1042,24 @@ export function analyzeAccessibility(html) {
         }
       }
       checkedRules.add("error-description");
-      if (
-        attribute(node, "aria-invalid")?.toLowerCase() === "true" &&
-        !attribute(node, "aria-describedby")?.trim()
-      ) {
-        add(
-          "error-description",
-          node,
-          "This invalid field is not linked to its error description.",
-          node.raw,
-          "Reference the visible error element with aria-describedby and announce submission errors.",
-        );
+      if (attribute(node, "aria-invalid")?.toLowerCase() === "true") {
+        const errorReferences = attribute(node, "aria-describedby")
+          ?.trim()
+          .split(/\s+/)
+          .filter(Boolean) || [];
+        const usableDescription = errorReferences.some((id) => {
+          const target = idMap.get(id)?.[0];
+          return target && !isHidden(target) && Boolean(getText(target));
+        });
+        if (!usableDescription) {
+          add(
+            "error-description",
+            node,
+            "This invalid field is not linked to a visible, non-empty error description.",
+            node.raw,
+            "Reference a visible error element with aria-describedby and announce submission errors.",
+          );
+        }
       }
     }
 
@@ -922,6 +1084,33 @@ export function analyzeAccessibility(html) {
         node.raw,
         "Use a valid, non-abstract ARIA role—or prefer the equivalent native HTML element.",
       );
+    }
+
+    const hasNativeRoleState =
+      (["checkbox", "radio", "switch"].includes(recognizedRole) &&
+        node.tag === "input" &&
+        ["checkbox", "radio"].includes(inputType)) ||
+      (recognizedRole === "combobox" && node.tag === "select") ||
+      (recognizedRole === "heading" && /^h[1-6]$/.test(node.tag)) ||
+      (recognizedRole === "slider" && node.tag === "input" && inputType === "range") ||
+      (recognizedRole === "spinbutton" && node.tag === "input" && inputType === "number");
+    const requiredRoleAttributes = hasNativeRoleState
+      ? []
+      : REQUIRED_ROLE_ATTRIBUTES[recognizedRole] || [];
+    if (requiredRoleAttributes.length) {
+      checkedRules.add("aria-required-state");
+      const missing = requiredRoleAttributes.filter(
+        (requiredAttribute) => !attribute(node, requiredAttribute)?.trim(),
+      );
+      if (missing.length) {
+        add(
+          "aria-required-state",
+          node,
+          `The ${recognizedRole} role is missing required state: ${missing.join(", ")}.`,
+          node.raw,
+          `Add ${missing.join(" and ")} with an accurate current value, or use a native HTML control.`,
+        );
+      }
     }
 
     checkedRules.add("aria-reference");
@@ -949,19 +1138,35 @@ export function analyzeAccessibility(html) {
     const nativeInteractive =
       INTERACTIVE_ELEMENTS.has(node.tag) ||
       ((node.tag === "a" || node.tag === "area") && hasAttribute(node, "href"));
-    if (hasClick && !nativeInteractive) {
+    const customInteractive = !nativeInteractive && INTERACTIVE_ROLES.has(recognizedRole);
+    if ((hasClick && !nativeInteractive) || customInteractive) {
       checkedRules.add("custom-control-keyboard");
       const keyboardHandler =
         hasAttribute(node, "onkeydown") ||
         hasAttribute(node, "onkeyup") ||
         hasAttribute(node, "onkeypress");
-      if (!isFocusable(node) || !keyboardHandler || !role) {
+      const missingInlineKeyboardHandler = hasClick && !keyboardHandler;
+      if (!isFocusable(node) || missingInlineKeyboardHandler || (hasClick && !recognizedRole)) {
         add(
           "custom-control-keyboard",
           node,
           "This custom clickable element is not fully keyboard operable.",
           node.raw,
           "Replace it with a native <button> or add an appropriate role, tabindex=\"0\", and Enter/Space keyboard handling.",
+        );
+      }
+    }
+
+    if (isFocusable(node)) {
+      checkedRules.add("focus-indicator");
+      const outline = inlineStyle(node).outline?.toLowerCase();
+      if (outline === "none" || /^(?:0|0px)(?:\s|$)/.test(outline || "")) {
+        add(
+          "focus-indicator",
+          node,
+          "This focusable element removes its browser focus indicator inline.",
+          node.raw,
+          "Remove the inline outline suppression and provide a clearly visible :focus-visible indicator.",
         );
       }
     }
@@ -1041,6 +1246,19 @@ export function analyzeAccessibility(html) {
     }
   }
 
+  for (const styleNode of nodes.filter((node) => node.tag === "style")) {
+    checkedRules.add("focus-indicator");
+    for (const evidence of suppressedFocusRules(styleNode.text)) {
+      add(
+        "focus-indicator",
+        styleNode,
+        "A CSS focus rule removes the visible outline without a detectable replacement.",
+        evidence,
+        "Provide a visible :focus-visible outline, border, background, text decoration, or box-shadow with sufficient contrast.",
+      );
+    }
+  }
+
   const severityOrder = { critical: 0, serious: 1, moderate: 2, minor: 3 };
   findings.sort(
     (left, right) =>
@@ -1076,16 +1294,14 @@ export function analyzeAccessibility(html) {
 
   return Object.freeze({
     version: AUDIT_VERSION,
-    status: "complete",
+    status: findingsTruncated ? "truncated" : "complete",
     score,
-    conformance:
-      summary.critical || summary.serious
-        ? "DOES_NOT_CONFORM"
-        : summary.moderate || summary.minor
-          ? "PARTIALLY_CONFORMS"
-          : "AUTOMATED_CHECKS_PASSED",
+    conformance: findings.length
+      ? "AUTOMATED_ISSUES_FOUND"
+      : "AUTOMATED_CHECKS_PASSED",
     summary: Object.freeze(summary),
     findings: Object.freeze(findings),
+    findingsTruncated,
     passedChecks: Object.freeze(passedChecks),
     manualChecks: MANUAL_CHECKS,
     analyzedElements: nodes.length,

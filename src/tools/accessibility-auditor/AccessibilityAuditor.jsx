@@ -10,6 +10,7 @@ import {
 import {
   analyzeAccessibility,
   AuditInputError,
+  MAX_FINDINGS,
   MAX_HTML_LENGTH,
 } from "./analyzer.js";
 import "./styles.css";
@@ -160,7 +161,9 @@ export default function AccessibilityAuditor() {
           value={html}
           onChange={(event) => {
             setHtml(event.target.value);
+            setReport(null);
             setError("");
+            setSeverity("all");
           }}
           maxLength={MAX_HTML_LENGTH}
           spellCheck="false"
@@ -230,6 +233,12 @@ export default function AccessibilityAuditor() {
                 ))}
               </div>
             </div>
+
+            {report.findingsTruncated && (
+              <p className="ts-a11y-error" role="status">
+                <WarningCircle weight="fill" aria-hidden="true" /> Showing the first {MAX_FINDINGS.toLocaleString("en-US")} findings. Reduce the markup scope to review additional issues safely.
+              </p>
+            )}
 
             {visibleFindings.length ? (
               <div className="ts-a11y-finding-list">

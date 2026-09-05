@@ -15,6 +15,7 @@ import {
   calculateQuoteTotals,
   createDocumentResult,
   formatMoney,
+  printPreparedDocument,
   validateQuoteDraft,
 } from "./logic.js";
 import "./styles.css";
@@ -186,10 +187,15 @@ function DocumentPreview({ draft, totals, preparedResult }) {
       </div>
 
       <div className="qib-preview-actions">
-        <button type="button" className="qib-secondary" onClick={() => window.print()} disabled={!preparedResult}>
-          <Printer aria-hidden="true" /> Print prepared draft
+        <button
+          type="button"
+          className="qib-secondary"
+          onClick={() => printPreparedDocument(preparedResult, () => window.print())}
+          disabled={!preparedResult}
+        >
+          <Printer aria-hidden="true" /> Print / save PDF locally
         </button>
-        <span>{preparedResult ? "Validated and ready to print" : "Prepare the draft before printing"}</span>
+        <span>{preparedResult ? "Validated and ready for local export" : "Prepare the draft before exporting"}</span>
       </div>
     </aside>
   );
@@ -285,7 +291,7 @@ export default function QuoteInvoiceBuilder() {
       )}
       {preparedResult && (
         <div className="qib-success" role="status">
-          <CheckCircle aria-hidden="true" /> Document validated. Totals are ready for a future save or PDF workflow.
+          <CheckCircle aria-hidden="true" /> Document validated. Use Print / Save as PDF to export it locally.
         </div>
       )}
 

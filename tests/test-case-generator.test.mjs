@@ -127,6 +127,55 @@ test("extracts database column contracts from SQL schemas", () => {
   assert.match(requirements[0].acceptanceCriteria[0], /NOT NULL/);
 });
 
+test("parses nested SQL constraints and quoted values without splitting columns", () => {
+  const requirements = parseSource(
+    `CREATE TABLE IF NOT EXISTS "invoice-items" (
+      id INTEGER NOT NULL,
+      amount DECIMAL(10, 2) NOT NULL CHECK (amount >= 0),
+      notes TEXT DEFAULT 'customer, requested follow-up'
+    );`,
+    "schema",
+  );
+
+  assert.deepEqual(requirements.map(({ id }) => id), [
+    "SCHEMA-INVOICE-ITEMS-ID",
+    "SCHEMA-INVOICE-ITEMS-AMOUNT",
+    "SCHEMA-INVOICE-ITEMS-NOTES",
+  ]);
+  assert.match(requirements[1].acceptanceCriteria[0], /DECIMAL\(10, 2\)/);
+  assert.match(requirements[2].acceptanceCriteria[0], /customer, requested follow-up/);
+});
+
+test("rejects malformed maximum-size SQL in bounded time", () => {
+  const fragment = "CREATE TABLE x (";
+  const malformed = fragment.repeat(Math.ceil(400_000 / fragment.length)).slice(0, 400_000);
+  const startedAt = performance.now();
+
+  assert.throws(
+    () => parseSource(malformed, "schema"),
+    /unclosed CREATE TABLE definition/,
+  );
+  assert.ok(performance.now() - startedAt < 1_000, "malformed SQL parsing exceeded 1 second");
+  assert.throws(
+    () => parseSource(`${malformed}x`, "schema"),
+    /400,000-character limit/,
+  );
+});
+
+test("enforces SQL table and column count limits", () => {
+  const tooManyTables = Array.from(
+    { length: 201 },
+    (_, index) => `CREATE TABLE table_${index} ();`,
+  ).join("\n");
+  const tooManyColumns = `CREATE TABLE wide (${Array.from(
+    { length: 201 },
+    (_, index) => `column_${index} INTEGER`,
+  ).join(",")});`;
+
+  assert.throws(() => parseSource(tooManyTables, "schema"), /200-table limit/);
+  assert.throws(() => parseSource(tooManyColumns, "schema"), /200-column limit/);
+});
+
 test("validates empty, duplicate, and invalid-priority requirements", () => {
   assert.equal(validateRequirements("").valid, false);
 
@@ -173,6 +222,55 @@ test("exports escaped CSV and neutralizes spreadsheet formulas", () => {
   assert.match(csv, /quote "" and newline\nwithout data loss/);
   assert.match(csv, /"1\. Create the export\."/);
   assert.equal(csv.split("\r\n").length, 2);
+});
+
+test("neutralizes formulas after leading ASCII whitespace and controls", () => {
+  const prefixes = [" ", "\t", "\r", "\n", "\u0000\u001f ", "\u007f"];
+  const markers = ["=", "+", "-", "@"];
+
+  prefixes.forEach((prefix) => {
+    markers.forEach((marker) => {
+      const id = `${prefix}${marker}SUM(1,1)`;
+      const testCase = {
+        id,
+        requirementId: "REQ-CSV",
+        requirement: "The export must remain inert.",
+        title: "CSV boundary safety",
+        type: "negative",
+        priority: "P0",
+        testLevel: "security",
+        preconditions: [],
+        steps: [],
+        expectedResult: "No formula execution.",
+        traceability: { acceptanceCriteria: [] },
+      };
+      const csv = exportTestCasesCsv([testCase]);
+      const firstDataCell = `"'${id.replace(/"/g, '""')}"`;
+
+      assert.ok(csv.slice(csv.indexOf("\r\n") + 2).startsWith(firstDataCell));
+      assert.equal(testCase.id, id, "CSV export must not mutate displayed case data");
+    });
+  });
+});
+
+test("preserves benign leading whitespace and mid-cell formula markers", () => {
+  for (const id of ["  safe value", "case=expected", "'already inert"]) {
+    const csv = exportTestCasesCsv([{
+      id,
+      requirementId: "REQ-CSV",
+      requirement: "The export must preserve safe text.",
+      title: "Safe CSV text",
+      type: "positive",
+      priority: "P2",
+      testLevel: "unit",
+      preconditions: [],
+      steps: [],
+      expectedResult: "Text is unchanged.",
+      traceability: { acceptanceCriteria: [] },
+    }]);
+
+    assert.ok(csv.slice(csv.indexOf("\r\n") + 2).startsWith(`"${id}"`));
+  }
 });
 
 test("rejects unsupported inputs and case types", () => {

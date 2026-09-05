@@ -152,10 +152,27 @@
   box-shadow: 0 0 0 3px rgba(46, 169, 229, 0.13);
 }
 
+.tsa-field input[aria-invalid="true"],
+.tsa-field textarea[aria-invalid="true"] {
+  border-color: #fb7185;
+  box-shadow: 0 0 0 3px rgba(251, 113, 133, 0.12);
+}
+
 .tsa-field small {
   color: #7891a8;
   font-size: 10px;
   line-height: 1.4;
+}
+
+.tsa-field .tsa-field-error {
+  color: #fda4af;
+  font-weight: 700;
+}
+
+.tsa-aggregate-limit {
+  margin-top: -8px;
+  color: #7891a8;
+  font-size: 10px;
 }
 
 .tsa-run {
@@ -176,6 +193,13 @@
 .tsa-run:hover {
   filter: brightness(1.06);
   transform: translateY(-1px);
+}
+
+.tsa-run:disabled {
+  cursor: progress;
+  filter: saturate(0.65);
+  opacity: 0.8;
+  transform: none;
 }
 
 .tsa-run svg {
@@ -268,6 +292,25 @@
   font-size: 12px;
 }
 
+.tsa-error-state:focus {
+  outline: 2px solid #fda4af;
+  outline-offset: 3px;
+}
+
+.tsa-error-state ul {
+  display: grid;
+  gap: 6px;
+  margin: 10px 0 0;
+  padding-left: 18px;
+  font-size: 12px;
+}
+
+.tsa-error-state a {
+  color: #fecdd3;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+
 /* # Audit details */
 .tsa-audit {
   display: grid;
@@ -336,6 +379,108 @@
   grid-template-columns: repeat(4, 1fr);
   margin: 0;
   border-bottom: 1px solid rgba(139, 174, 203, 0.13);
+}
+
+.tsa-metrics-wide {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.tsa-metrics-wide div:nth-child(3n) {
+  border-right: 0;
+}
+
+.tsa-metrics-wide div:nth-child(-n+3) {
+  border-bottom: 1px solid rgba(139, 174, 203, 0.13);
+}
+
+.tsa-metrics-wide dd {
+  overflow-wrap: anywhere;
+  font-size: 14px;
+}
+
+.tsa-pillar-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+  padding: 18px 16px 0;
+}
+
+.tsa-pillar {
+  display: grid;
+  gap: 10px;
+  min-height: 86px;
+  border: 1px solid rgba(139, 174, 203, 0.15);
+  border-radius: 10px;
+  padding: 12px;
+  background: rgba(4, 18, 31, 0.36);
+}
+
+.tsa-pillar span {
+  color: #8fa7bb;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.tsa-pillar strong {
+  align-self: end;
+  color: #edf6ff;
+  font-size: 22px;
+}
+
+.tsa-pillar strong small {
+  color: #718da4;
+  font-size: 10px;
+}
+
+.tsa-pillar.tsa-status-pass { border-color: rgba(69, 210, 160, 0.32); }
+.tsa-pillar.tsa-status-warning { border-color: rgba(245, 185, 79, 0.3); }
+.tsa-pillar.tsa-status-error { border-color: rgba(251, 113, 133, 0.3); }
+
+.tsa-report-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  padding: 16px 16px 0;
+}
+
+.tsa-report-actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid rgba(72, 199, 255, 0.26);
+  border-radius: 8px;
+  padding: 8px 10px;
+  color: #bfeaff;
+  background: rgba(18, 83, 119, 0.2);
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.tsa-report-actions button:hover,
+.tsa-report-actions button:focus-visible {
+  border-color: #48c7ff;
+}
+
+.tsa-report-actions button svg {
+  width: 16px;
+  height: 16px;
+}
+
+.tsa-report-actions span {
+  color: #91a8bd;
+  font-size: 11px;
+}
+
+.tsa-disclaimer {
+  margin: 0;
+  padding: 0 20px 20px;
+  color: #718da4;
+  font-size: 10px;
+  line-height: 1.5;
 }
 
 .tsa-metrics div {
@@ -437,6 +582,9 @@
   .tsa-empty {
     min-height: 440px;
   }
+  .tsa-pillar-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 620px) {
@@ -462,6 +610,21 @@
   }
   .tsa-metrics {
     grid-template-columns: repeat(2, 1fr);
+  }
+  .tsa-metrics-wide {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .tsa-metrics-wide div:nth-child(3n) {
+    border-right: 1px solid rgba(139, 174, 203, 0.13);
+  }
+  .tsa-metrics-wide div:nth-child(2n) {
+    border-right: 0;
+  }
+  .tsa-metrics-wide div:nth-child(-n+4) {
+    border-bottom: 1px solid rgba(139, 174, 203, 0.13);
+  }
+  .tsa-pillar-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .tsa-metrics div:nth-child(2) {
     border-right: 0;

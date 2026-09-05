@@ -3,27 +3,18 @@ export const MONEY_SCALE = 100;
 export const QUANTITY_SCALE = 1_000;
 export const RATE_SCALE = 10_000;
 export const MAX_MONEY_CENTS = 100_000_000_000;
+export const DOCUMENT_KINDS = Object.freeze([
+  "quote",
+  "proposal",
+  "invoice",
+  "change_order",
+]);
 
-export const TOOL_MANIFEST = Object.freeze({
-  key: "quote-invoice-builder",
-  name: "Quote & Invoice Builder",
-  category: "Finance",
-  version: "1.0.0",
-  description:
-    "Build itemized quotes and invoices with deterministic discounts, tax, deposits, and balances.",
-  capabilities: Object.freeze([
-    "Itemized scope",
-    "Money-safe totals",
-    "Discounts, tax, and fees",
-    "Deposit and balance",
-    "Stable document data",
-  ]),
-  persistence: "none",
-});
+export { TOOL_MANIFEST } from "./manifest.js";
 
 export class QuoteValidationError extends Error {
   constructor(errors) {
-    super("The quote or invoice contains invalid financial data.");
+    super("The client document contains invalid data.");
     this.name = "QuoteValidationError";
     this.errors = errors;
   }
@@ -259,8 +250,26 @@ function usesExpiration(kind) {
   return kind === "quote" || kind === "proposal";
 }
 
-export function validateQuoteDraft(draft = {}) {
+function getDocumentContract(kind) {
+  if (typeof kind !== "string" || !DOCUMENT_KINDS.includes(kind)) return null;
+  const expiration = usesExpiration(kind);
+  return Object.freeze({
+    kind,
+    deadlinePath: expiration ? "expiresOn" : "dueDate",
+    deadlineMessage: expiration
+      ? "Enter a valid expiration date."
+      : "Enter a valid payment due date.",
+  });
+}
+
+function validateDraftAgainstContract(draft, contract) {
   const errors = [...validateCalculationInput(draft).errors];
+  if (!contract) {
+    errors.push({
+      path: "kind",
+      message: "Choose quote, proposal, invoice, or change order.",
+    });
+  }
   const requiredText = [
     ["business.name", draft.business?.name, "Enter your business name."],
     ["client.name", draft.client?.name, "Enter the client name."],
@@ -275,18 +284,26 @@ export function validateQuoteDraft(draft = {}) {
     errors.push({ path: "issueDate", message: "Enter a valid issue date." });
   }
 
-  const deadlinePath = usesExpiration(draft.kind) ? "expiresOn" : "dueDate";
-  const deadline = draft[deadlinePath];
-  if (!isValidDate(deadline)) {
-    errors.push({
-      path: deadlinePath,
-      message: usesExpiration(draft.kind) ? "Enter a valid expiration date." : "Enter a valid payment due date.",
-    });
-  } else if (isValidDate(draft.issueDate) && deadline < draft.issueDate) {
-    errors.push({ path: deadlinePath, message: "The deadline cannot be before the issue date." });
+  if (contract) {
+    const deadline = draft[contract.deadlinePath];
+    if (!isValidDate(deadline)) {
+      errors.push({
+        path: contract.deadlinePath,
+        message: contract.deadlineMessage,
+      });
+    } else if (isValidDate(draft.issueDate) && deadline < draft.issueDate) {
+      errors.push({
+        path: contract.deadlinePath,
+        message: "The deadline cannot be before the issue date.",
+      });
+    }
   }
 
   return Object.freeze({ valid: errors.length === 0, errors: Object.freeze(errors) });
+}
+
+export function validateQuoteDraft(draft = {}) {
+  return validateDraftAgainstContract(draft, getDocumentContract(draft.kind));
 }
 
 // # Display formatting
@@ -297,16 +314,18 @@ export function formatMoney(cents, currency = "USD") {
 
 // # Stable document result
 export function createDocumentResult(draft = {}) {
-  const validation = validateQuoteDraft(draft);
+  // Resolve the kind/deadline contract once so the exported fields cannot diverge.
+  const contract = getDocumentContract(draft.kind);
+  const validation = validateDraftAgainstContract(draft, contract);
   if (!validation.valid) throw new QuoteValidationError(validation.errors);
   const totals = calculateQuoteTotals(draft);
 
   return Object.freeze({
     schema: "toolstead.quote-invoice.v1",
-    kind: ["quote", "proposal", "invoice", "change_order"].includes(draft.kind) ? draft.kind : "quote",
+    kind: contract.kind,
     documentNumber: String(draft.documentNumber).trim(),
     issueDate: draft.issueDate,
-    deadline: usesExpiration(draft.kind) ? draft.expiresOn : draft.dueDate,
+    deadline: draft[contract.deadlinePath],
     currency: totals.currency,
     business: Object.freeze({
       name: String(draft.business.name).trim(),
@@ -332,4 +351,17 @@ export function createDocumentResult(draft = {}) {
       processingFeeBase: "discounted subtotal plus tax",
     }),
   });
+}
+
+// # Local document export
+export function printPreparedDocument(documentResult, printAction) {
+  if (documentResult?.schema !== "toolstead.quote-invoice.v1") {
+    throw new TypeError("Prepare a valid client document before printing.");
+  }
+  if (typeof printAction !== "function") {
+    throw new TypeError("A browser print action is required.");
+  }
+
+  printAction();
+  return documentResult;
 }

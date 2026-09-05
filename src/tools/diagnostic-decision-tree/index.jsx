@@ -114,6 +114,25 @@ export default function DiagnosticDecisionTreeWorkspace({
         </div>
       </aside>
 
+      {validation.valid && (
+        <section className="diagnostic-tree__context" aria-labelledby="diagnostic-context-title">
+          <div>
+            <span className="diagnostic-tree__eyebrow">Before you begin</span>
+            <h2 id="diagnostic-context-title">Workflow boundary</h2>
+            <p><strong>System:</strong> {tree.systemBoundary}</p>
+            <p><strong>Starting symptom:</strong> {tree.initialSymptom}</p>
+          </div>
+          <div>
+            <h3>Prerequisites</h3>
+            <ul>
+              {tree.prerequisites.map((prerequisite) => (
+                <li key={prerequisite}>{prerequisite}</li>
+              ))}
+            </ul>
+          </div>
+        </section>
+      )}
+
       {!validation.valid ? (
         <ConfigurationError errors={validation.errors} />
       ) : (
@@ -249,6 +268,33 @@ function QuestionNode({ node, onAnswer }) {
     <fieldset className="diagnostic-tree__question">
       <legend>{node.prompt}</legend>
       {node.description && <p>{node.description}</p>}
+      <section className="diagnostic-tree__test-card" aria-labelledby={`test-action-${node.id}`}>
+        <span className="diagnostic-tree__eyebrow">Perform this test first</span>
+        <h2 id={`test-action-${node.id}`}>{node.testAction}</h2>
+        <dl>
+          {node.testPoint && (
+            <div>
+              <dt>Test point</dt>
+              <dd>{node.testPoint}</dd>
+            </div>
+          )}
+          {Array.isArray(node.tools) && node.tools.length > 0 && (
+            <div>
+              <dt>Required tools</dt>
+              <dd>
+                <ul>
+                  {node.tools.map((tool) => <li key={tool}>{tool}</li>)}
+                </ul>
+              </dd>
+            </div>
+          )}
+          <div>
+            <dt>Expected criterion</dt>
+            <dd>{node.expectedCriterion}</dd>
+          </div>
+        </dl>
+      </section>
+      <h2 className="diagnostic-tree__branch-heading">Record the observed result</h2>
       <div className="diagnostic-tree__answers">
         {node.answers.map((answer) => (
           <button key={answer.id} type="button" onClick={() => onAnswer(answer.id)}>
@@ -287,6 +333,20 @@ function OutcomeNode({ node }) {
           </ul>
         </div>
       )}
+      <div className="diagnostic-tree__verification">
+        <h3>Post-work verification checklist</h3>
+        <p>Complete every check before treating this outcome as verified.</p>
+        <ul>
+          {node.verificationSteps.map((step, index) => (
+            <li key={`${node.id}-verification-${index}`}>
+              <label>
+                <input type="checkbox" />
+                <span>{step}</span>
+              </label>
+            </li>
+          ))}
+        </ul>
+      </div>
     </article>
   );
 }

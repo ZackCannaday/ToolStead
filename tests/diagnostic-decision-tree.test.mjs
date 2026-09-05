@@ -28,6 +28,8 @@ function validTree() {
         type: "question",
         prompt: "Choose a test branch.",
         testAction: "Select one of the test-only branch controls.",
+        testPoint: "Fixture control group A",
+        tools: ["Test harness", "Result recorder"],
         expectedCriterion: "Exactly one configured branch is selected.",
         answers: [
           { id: "short", label: "Short path", nextNodeId: "complete" },
@@ -56,7 +58,7 @@ function validTree() {
 
 test("manifest exposes an implemented deterministic tool", () => {
   assert.equal(TOOL_MANIFEST.key, "diagnostic-decision-tree");
-  assert.equal(TOOL_MANIFEST.maturity, "implemented");
+  assert.equal(TOOL_MANIFEST.maturity, "foundation");
   assert.ok(TOOL_MANIFEST.capabilities.includes("Cycle and invalid-path protection"));
 });
 
@@ -66,6 +68,30 @@ test("validates a complete, acyclic configuration", () => {
   assert.equal(result.valid, true);
   assert.deepEqual(result.errors, []);
   assert.equal(result.reachableNodeIds.length, 3);
+});
+
+test("accepts blank optional authoring fields", () => {
+  const tree = validTree();
+  tree.description = "";
+  tree.nodes[0].description = "";
+  tree.nodes[2].safetyNotice = "";
+
+  assert.equal(validateDecisionTree(tree).valid, true);
+});
+
+test("retains the authored test procedure and verification contract", () => {
+  const tree = validTree();
+  const session = createDecisionTreeSession(tree);
+  const testNode = tree.nodes.find((node) => node.id === session.currentNodeId);
+  const outcome = tree.nodes.find((node) => node.id === "complete");
+
+  assert.equal(testNode.testAction, "Select one of the test-only branch controls.");
+  assert.equal(testNode.testPoint, "Fixture control group A");
+  assert.deepEqual(testNode.tools, ["Test harness", "Result recorder"]);
+  assert.equal(testNode.expectedCriterion, "Exactly one configured branch is selected.");
+  assert.deepEqual(outcome.verificationSteps, [
+    "Confirm the terminal node ID is complete.",
+  ]);
 });
 
 test("requires explicit safety notices", () => {
