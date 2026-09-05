@@ -4,9 +4,20 @@ All meaningful project changes are recorded here.
 
 ## Unreleased
 
+- Integrate all six Wave 1 deterministic modules into the shared Tool Library and workspace shell.
+- Consolidate the quote module into the existing Smart Intake product instead of creating a duplicate product tile.
+- Label runnable modules without tenant persistence as Beta/session-only and reserve Working for complete workflows.
+- Add responsive back navigation, truthful runnable-tool sidebar entries, and registry-to-component integration tests.
+- Add a validated immutable manifest contract for every Wave 1 workspace.
+- Bound accessibility and SQL analysis workloads, cap findings, and harden CSV exports against formula injection.
+- Invalidate generated results when their source inputs change, including in-flight SEO worker results.
+- Use exact decimal-to-cent arithmetic for project budgets and contain lazy workspace failures with an accessible recovery boundary.
+- Preserve authored diagnostic procedures and verification checklists through builder and runner modes.
+- Add local Markdown, JSON, CSV, and print/PDF export paths where each tool supports them.
 - Prevent production deployments from falling back to unauthenticated local test mode.
 - Inject the public Supabase browser configuration from the Sites runtime environment.
 - Add a clearly labeled sidebar sign-out control and respond to Supabase `SIGNED_OUT` events.
+- Add an explicit public, isolated `toolstead-preview=1` sandbox for the six client-only Wave 1 tools while keeping CRM, accounts, tenant data, persistence, and APIs behind authentication.
 
 ### Added
 
@@ -16,6 +27,8 @@ All meaningful project changes are recorded here.
 ### Verified
 
 - The requested owner email is not currently registered in the connected Toolstead Supabase project.
+- Wave 1 production build, Sites packaging, preview-boundary security review, and 149 automated tests pass.
+- Rendered desktop QA passes for the isolated six-tool preview; tablet/mobile visual QA remains outstanding.
 
 ## 0.4.0 — Supabase connection and tool truth audit
 

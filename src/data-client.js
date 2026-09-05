@@ -1,4 +1,5 @@
 import * as nodeApi from "./api.js";
+import { shouldUseLocalPreview } from "./preview-mode.js";
 
 // # Active data provider
 let provider = "local";
@@ -81,6 +82,17 @@ export async function establishConnection() {
       503,
       "AUTH_CONFIGURATION_MISSING",
     );
+  }
+
+  if (
+    shouldUseLocalPreview({
+      isProduction,
+      hasSupabaseConfig,
+      search: globalThis.location?.search || "",
+    })
+  ) {
+    provider = "local";
+    return { state: "local", provider };
   }
 
   try {
