@@ -57,11 +57,18 @@ import {
 } from "./data-client.js";
 import {
   MATURITY_PRESENTATION,
+  TOOL_DEFINITIONS,
   TOOL_MATURITY,
+  WAVE_ONE_TOOL_KEYS,
   auditTool,
   mergeToolEntitlements,
 } from "./tool-registry.js";
 import ToolWorkspaceErrorBoundary from "./components/tool-workspace-error-boundary.js";
+import {
+  PREVIEW_QUERY_KEY,
+  selectPreviewTools,
+  shouldUsePublicPreview,
+} from "./preview-mode.js";
 
 // # Preview records
 const PREVIEW_CONTACTS = [];
@@ -239,6 +246,18 @@ function ConnectionScreen({ title, message, children }) {
         {children}
       </section>
     </main>
+  );
+}
+
+function PreviewToolsAction() {
+  const previewUrl = new URL(window.location.href);
+  previewUrl.search = "";
+  previewUrl.hash = "";
+  previewUrl.searchParams.set(PREVIEW_QUERY_KEY, "1");
+  return (
+    <a className="secondary-button preview-tools-action" href={previewUrl.toString()}>
+      <TestTube /> Preview beta tools
+    </a>
   );
 }
 
@@ -442,8 +461,99 @@ function LoginScreen({ onAuthenticated }) {
             Return to sign in
           </button>
         )}
+        <div className="preview-auth-divider" aria-hidden="true"><span>or</span></div>
+        <PreviewToolsAction />
+        <p className="preview-auth-note">
+          No account required. Preview data stays in this browser session and is
+          never connected to your workspace.
+        </p>
       </form>
     </ConnectionScreen>
+  );
+}
+
+function PreviewToolCatalog({ tools, onOpenTool }) {
+  return (
+    <main className="page-content preview-tool-catalog">
+      <header className="page-heading">
+        <div>
+          <span className="eyebrow">Isolated browser preview</span>
+          <h1>Test the beta tools</h1>
+          <p>
+            These six tools run only in this tab. They cannot access customer
+            records, accounts, workspace data, or connected services.
+          </p>
+        </div>
+        <span className="catalog-count">{tools.length} testable tools</span>
+      </header>
+      <section className="tool-grid" aria-label="Beta tools available to preview">
+        {tools.map((tool) => {
+          const Icon = tool.icon;
+          return (
+            <article className="tool-card" key={tool.key}>
+              <div className="tool-card-top">
+                <span className={`tool-mark ${tool.accent}`}>
+                  <Icon weight="duotone" />
+                </span>
+                <span className="status-pill foundation">
+                  <Wrench /> Beta · session only
+                </span>
+              </div>
+              <span className="tool-category">{tool.category}</span>
+              <h2>{tool.name}</h2>
+              <p>{tool.description}</p>
+              <footer>
+                <small>No sign-in or saving</small>
+                <button className="secondary-button" onClick={() => onOpenTool(tool)}>
+                  Open beta <ArrowRight />
+                </button>
+              </footer>
+            </article>
+          );
+        })}
+      </section>
+    </main>
+  );
+}
+
+function BetaToolsPreview() {
+  const [activeWorkspaceId, setActiveWorkspaceId] = useState("");
+  const tools = useMemo(
+    () =>
+      selectPreviewTools(TOOL_DEFINITIONS, WAVE_ONE_TOOL_KEYS).map((tool) => ({
+        ...tool,
+        icon: TOOL_ICONS[tool.key],
+        accent: TOOL_ACCENTS[tool.key],
+      })),
+    [],
+  );
+  const activeTool = tools.find((tool) => tool.workspaceId === activeWorkspaceId);
+  const protectedUrl = `${window.location.pathname}${window.location.hash || ""}`;
+
+  return (
+    <div className="beta-preview-shell">
+      <header className="beta-preview-header">
+        <a className="brand" href={protectedUrl} aria-label="Return to Toolstead sign in">
+          <img src="/assets/toolstead-logo.png" alt="Toolstead" />
+        </a>
+        <span className="status-pill foundation"><TestTube /> Isolated beta preview</span>
+        <a className="secondary-button" href={protectedUrl}>
+          <ShieldCheck /> Return to secure sign in
+        </a>
+      </header>
+      <div className="preview-banner" role="note">
+        <span><Sparkle weight="fill" /></span>
+        <p>
+          <strong>Preview mode</strong> — session-only tools; no CRM, tenant data,
+          API calls, persistence, or account access.
+        </p>
+      </div>
+      {activeTool ? (
+        <ToolWorkspace tool={activeTool} onBack={() => setActiveWorkspaceId("")} />
+      ) : (
+        <PreviewToolCatalog tools={tools} onOpenTool={(tool) => setActiveWorkspaceId(tool.workspaceId)} />
+      )}
+    </div>
   );
 }
 
@@ -1093,7 +1203,7 @@ function CrmWorkspace({
 }
 
 // # Main application
-export function App() {
+function ProtectedWorkspaceApp() {
   const [connectionState, setConnectionState] = useState("checking");
   const [passwordRecovery, setPasswordRecovery] = useState(false);
   const [connectionError, setConnectionError] = useState("");
@@ -1372,6 +1482,7 @@ export function App() {
         >
           Try again
         </button>
+        <PreviewToolsAction />
       </ConnectionScreen>
     );
 
@@ -1729,4 +1840,11 @@ export function App() {
       )}
     </div>
   );
+}
+
+export function App() {
+  if (shouldUsePublicPreview(window.location.search)) {
+    return <BetaToolsPreview />;
+  }
+  return <ProtectedWorkspaceApp />;
 }

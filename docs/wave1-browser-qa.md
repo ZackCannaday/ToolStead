@@ -7,7 +7,9 @@ Decision: **PASS — desktop session-only beta; mobile visual pass remains requi
 ## Evidence collected
 
 - The production dashboard shell opened at `http://terminal.local:4173/` through the supported Sites preview.
-- An explicit development-only `?toolstead-preview=1` route opened the session-only dashboard without weakening production authentication.
+- An explicit `?toolstead-preview=1` route opened a production-safe, session-only tool sandbox before authentication discovery.
+- The preview catalog exposed exactly six approved tools and excluded CRM, account, sign-out, tenant, API, network, and persistence surfaces.
+- The default route still resolved to the protected owner sign-in screen and presented a visible **Preview beta tools** link.
 - All six Wave 1 workspaces opened from protected dashboard navigation.
 - Accessibility Auditor produced two deterministic findings from invalid markup, then cleared the report after source mutation.
 - Search Visibility Studio produced its five-pillar result and enabled Markdown export, then invalidated the result/export after title mutation.
@@ -30,4 +32,4 @@ Before removing the beta label, exercise each workspace at mobile and tablet wid
 2. Confirm the sidebar/mobile navigation, tool header, editors, previews, and action rows remain usable.
 3. Repeat keyboard focus, label, error-relationship, and recovery-navigation checks.
 
-The authenticated, session-only beta may be deployed for owner review. Mobile visual QA remains required before a general customer release.
+The isolated, session-only beta may be deployed for owner review without an account. Mobile visual QA remains required before a general customer release.
