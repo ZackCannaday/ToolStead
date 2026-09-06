@@ -57,9 +57,9 @@ import {
 } from "./data-client.js";
 import {
   MATURITY_PRESENTATION,
+  PUBLIC_PREVIEW_TOOL_KEYS,
   TOOL_DEFINITIONS,
   TOOL_MATURITY,
-  WAVE_ONE_TOOL_KEYS,
   auditTool,
   mergeToolEntitlements,
 } from "./tool-registry.js";
@@ -70,6 +70,7 @@ import DiagnosticDecisionTreeWorkspace from "./tools/diagnostic-decision-tree/in
 import ProjectMaterialPlanner from "./tools/project-material-planner/index.jsx";
 import QuoteInvoiceBuilder from "./tools/quote-invoice-builder/index.jsx";
 import SeoAeoAnalyzer from "./tools/seo-aeo-analyzer/index.jsx";
+import SiteBuilder from "./tools/site-builder/index.jsx";
 import TestCaseGenerator from "./tools/test-case-generator/index.js";
 import {
   PREVIEW_QUERY_KEY,
@@ -124,6 +125,7 @@ const TOOL_COMPONENTS = Object.freeze({
   "diagnostic-flow": DiagnosticFlowTool,
   "project-material-planner": ProjectMaterialPlanner,
   "code-quality-desk": TestCaseGenerator,
+  "site-builder": SiteBuilder,
 });
 const EMPTY_LEAD = {
   displayName: "",
@@ -479,7 +481,7 @@ function PreviewToolCatalog({ tools, onOpenTool }) {
           <span className="eyebrow">Isolated browser preview</span>
           <h1>Test the beta tools</h1>
           <p>
-            These six tools run only in this tab. They cannot access customer
+            These {tools.length} tools run only in this tab. They cannot access customer
             records, accounts, workspace data, or connected services.
           </p>
         </div>
@@ -519,7 +521,7 @@ function BetaToolsPreview() {
   const [activeWorkspaceId, setActiveWorkspaceId] = useState("");
   const tools = useMemo(
     () =>
-      selectPreviewTools(TOOL_DEFINITIONS, WAVE_ONE_TOOL_KEYS).map((tool) => ({
+      selectPreviewTools(TOOL_DEFINITIONS, PUBLIC_PREVIEW_TOOL_KEYS).map((tool) => ({
         ...tool,
         icon: TOOL_ICONS[tool.key],
         accent: TOOL_ACCENTS[tool.key],
@@ -626,12 +628,21 @@ function PasswordRecoveryScreen({ onComplete }) {
 // # Accessible dialog
 function Modal({ title, eyebrow, children, onClose, wide = false }) {
   const closeRef = useRef(null);
+  const onCloseRef = useRef(onClose);
+
+  // # Keep latest close action
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
+
+  // # Set initial dialog focus
   useEffect(() => {
     closeRef.current?.focus();
-    const escape = (event) => event.key === "Escape" && onClose();
+    const escape = (event) =>
+      event.key === "Escape" && onCloseRef.current?.();
     window.addEventListener("keydown", escape);
     return () => window.removeEventListener("keydown", escape);
-  }, [onClose]);
+  }, []);
   return (
     <div className="modal-backdrop" onMouseDown={onClose}>
       <section

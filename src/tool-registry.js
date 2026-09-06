@@ -3,6 +3,7 @@ import { TOOL_MANIFEST as DIAGNOSTIC_MANIFEST } from "./tools/diagnostic-decisio
 import { TOOL_MANIFEST as PLANNER_MANIFEST } from "./tools/project-material-planner/manifest.js";
 import { TOOL_MANIFEST as QUOTE_MANIFEST } from "./tools/quote-invoice-builder/manifest.js";
 import { TOOL_MANIFEST as SEO_MANIFEST } from "./tools/seo-aeo-analyzer/manifest.js";
+import { TOOL_MANIFEST as SITE_BUILDER_MANIFEST } from "./tools/site-builder/manifest.js";
 import { TOOL_MANIFEST as TEST_CASE_MANIFEST } from "./tools/test-case-generator/manifest.js";
 import { TOOL_MATURITY } from "./tools/manifest-contract.js";
 
@@ -21,8 +22,16 @@ export const WAVE_ONE_TOOL_KEYS = Object.freeze(
   WAVE_ONE_TOOL_MANIFESTS.map((manifest) => manifest.catalogKey),
 );
 
-const WAVE_ONE_MANIFEST_BY_CATALOG_KEY = new Map(
-  WAVE_ONE_TOOL_MANIFESTS.map((manifest) => [manifest.catalogKey, manifest]),
+export const PUBLIC_PREVIEW_TOOL_MANIFESTS = Object.freeze([
+  ...WAVE_ONE_TOOL_MANIFESTS,
+  SITE_BUILDER_MANIFEST,
+]);
+export const PUBLIC_PREVIEW_TOOL_KEYS = Object.freeze(
+  PUBLIC_PREVIEW_TOOL_MANIFESTS.map((manifest) => manifest.catalogKey),
+);
+
+const RUNNABLE_MANIFEST_BY_CATALOG_KEY = new Map(
+  PUBLIC_PREVIEW_TOOL_MANIFESTS.map((manifest) => [manifest.catalogKey, manifest]),
 );
 
 // # Audited tool catalog
@@ -50,17 +59,22 @@ const CATALOG_DEFINITIONS = [
     key: "site-builder",
     name: "Sites, Funnels & Forms",
     description:
-      "Build websites, landing pages, surveys, forms, and conversion funnels.",
+      "Build multi-page sites, landing pages, funnels, and lead forms, then export a portable static site package.",
     category: "Marketing",
-    maturity: TOOL_MATURITY.notStarted,
+    maturity: TOOL_MATURITY.foundation,
     included: "Marketing bundle",
-    implemented: ["Module registration", "Entitlement data model"],
+    implemented: [
+      "Multi-page editor",
+      "Reusable content and conversion sections",
+      "Responsive session preview",
+      "Validated static HTML, CSS, and project export",
+    ],
     missing: [
-      "Page editor",
       "Publishing pipeline",
-      "Forms",
       "Surveys",
       "Domain management",
+      "Hosted form submissions",
+      "Tenant-scoped saved projects",
     ],
   },
   {
@@ -299,7 +313,7 @@ const CATALOG_DEFINITIONS = [
 
 export const TOOL_DEFINITIONS = Object.freeze(
   CATALOG_DEFINITIONS.map((tool) => {
-    const manifest = WAVE_ONE_MANIFEST_BY_CATALOG_KEY.get(tool.key);
+    const manifest = RUNNABLE_MANIFEST_BY_CATALOG_KEY.get(tool.key);
     if (!manifest) return Object.freeze(tool);
     return Object.freeze({
       ...tool,
