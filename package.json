@@ -8,6 +8,7 @@
     "dev:api": "node --env-file-if-exists=.env --watch server/index.js",
     "dev:web": "vite",
     "build": "vite build && node scripts/prepare-sites-build.mjs",
+    "build:sites": "vite build && node scripts/verify-auth-build.mjs && node scripts/prepare-sites-build.mjs",
     "preview": "vite preview",
     "start": "node --env-file-if-exists=.env server/index.js",
     "db:migrate": "node --env-file-if-exists=.env server/db/migrate.js",

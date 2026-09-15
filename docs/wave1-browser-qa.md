@@ -22,6 +22,12 @@ Decision: **PASS — desktop session-only beta; mobile visual pass remains requi
 
 ## Remaining browser coverage
 
+Version 10 exposed a deployed-host-only failure on iPhone: the quote, diagnostic,
+and planner workspaces requested separate lazy JavaScript chunks that the host
+reported as requiring authorization. The preview workspaces now ship in the entry
+bundle, removing click-time module requests. Version 11 requires a fresh anonymous
+deployed-host six-tool smoke test before this regression is considered closed.
+
 The supported browser surface does not expose viewport resizing, so tablet/mobile visual checks were not executed in this pass. The responsive CSS and production build remain covered by static and build verification, but that is not a substitute for a rendered mobile pass.
 
 ## Release gate still required
